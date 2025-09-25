@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import Navbar from "@/components/Navbar";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -38,56 +38,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <header className="border-b border-white/10 bg-white/5 backdrop-blur">
-          <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-            <Link href="/" className="font-semibold">
-              AI Image Gallery
-            </Link>
-            <nav className="flex items-center gap-4 text-sm">
-              <Link
-                href="/"
-                className="hover:underline hover:underline-offset-4"
-              >
-                Home
-              </Link>
-              <Link
-                href="/dashboard"
-                className="hover:underline hover:underline-offset-4"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/upload"
-                className="hover:underline hover:underline-offset-4"
-              >
-                Upload
-              </Link>
-              {!isAuthed ? (
-                <>
-                  <Link
-                    href="/sign-in"
-                    className="hover:underline hover:underline-offset-4"
-                  >
-                    Sign in
-                  </Link>
-                  <Link
-                    href="/sign-up"
-                    className="rounded-md bg-foreground text-background px-3 py-1.5 font-medium hover:opacity-90 transition"
-                  >
-                    Sign up
-                  </Link>
-                </>
-              ) : (
-                <Link
-                  href="/dashboard"
-                  className="hover:underline hover:underline-offset-4"
-                >
-                  My account
-                </Link>
-              )}
-            </nav>
-          </div>
-        </header>
+        {isAuthed && <Navbar />}
         {children}
       </body>
     </html>

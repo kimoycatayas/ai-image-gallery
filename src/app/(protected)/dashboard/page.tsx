@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { signOut } from "@/app/actions/auth";
 import Image from "next/image";
 
 const demoImages = [
@@ -21,14 +20,6 @@ export default function DashboardPage() {
           >
             Upload image
           </Link>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="text-sm underline hover:no-underline"
-            >
-              Sign out
-            </button>
-          </form>
         </div>
       </header>
 
