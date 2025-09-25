@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, use } from "react";
+import { uploadImage } from "@/app/actions/upload";
 
-export default function UploadPage() {
+export default function UploadPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; success?: string }>;
+}) {
+  const params = use(searchParams);
   const [fileName, setFileName] = useState<string>("");
   const [isUploading, setIsUploading] = useState<boolean>(false);
 
@@ -12,10 +18,9 @@ export default function UploadPage() {
     setFileName(file ? file.name : "");
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(formData: FormData) {
     setIsUploading(true);
-    setTimeout(() => setIsUploading(false), 1000);
+    await uploadImage(formData);
   }
 
   return (
@@ -30,7 +35,19 @@ export default function UploadPage() {
         </Link>
       </header>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {params?.error && (
+        <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 text-sm px-3 py-2">
+          {params.error}
+        </div>
+      )}
+
+      {params?.success && (
+        <div className="mb-4 rounded-md border border-green-500/40 bg-green-500/10 text-sm px-3 py-2">
+          {params.success}
+        </div>
+      )}
+
+      <form action={handleSubmit} className="space-y-6">
         <div>
           <label className="block text-sm mb-2">Choose an image</label>
           <label className="flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3 cursor-pointer hover:bg-white/10 transition">
@@ -42,7 +59,9 @@ export default function UploadPage() {
             </span>
             <input
               type="file"
+              name="file"
               accept="image/*"
+              required
               className="hidden"
               onChange={handleFileChange}
             />

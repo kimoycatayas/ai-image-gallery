@@ -1,14 +1,46 @@
 import Link from "next/link";
 import Image from "next/image";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
-const demoImages = [
-  { id: 1, src: "/next.svg", title: "Next Logo" },
-  { id: 2, src: "/vercel.svg", title: "Vercel" },
-  { id: 3, src: "/globe.svg", title: "Globe" },
-  { id: 4, src: "/window.svg", title: "Window" },
-];
+interface ImageRecord {
+  id: string;
+  filename: string;
+  original_name: string;
+  caption: string | null;
+  storage_path: string;
+  created_at: string;
+}
 
-export default function DashboardPage() {
+async function getUserImages(): Promise<ImageRecord[]> {
+  const supabase = getSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: images, error } = await supabase
+    .from("images")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching images:", error);
+    return [];
+  }
+
+  return images || [];
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ success?: string }>;
+}) {
+  const params = await searchParams;
+  const images = await getUserImages();
+
   return (
     <main className="min-h-screen p-6">
       <header className="flex items-center justify-between mb-8">
@@ -23,27 +55,42 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {params?.success && (
+        <div className="mb-6 rounded-md border border-green-500/40 bg-green-500/10 text-sm px-3 py-2">
+          {params.success}
+        </div>
+      )}
+
       <section>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {demoImages.map((img) => (
+          {images.map((img) => (
             <div
               key={img.id}
               className="rounded-xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition"
             >
               <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-background/60">
                 <Image
-                  src={img.src}
-                  alt={img.title}
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${img.storage_path}`}
+                  alt={img.caption || img.original_name}
                   fill
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 200px"
-                  className="object-contain p-6 dark:invert"
+                  className="object-cover"
                 />
               </div>
-              <div className="mt-3 text-sm text-foreground/80">{img.title}</div>
+              <div className="mt-3">
+                <div className="text-sm text-foreground/80 font-medium truncate">
+                  {img.original_name}
+                </div>
+                {img.caption && (
+                  <div className="text-xs text-foreground/60 mt-1 line-clamp-2">
+                    {img.caption}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
-        {demoImages.length === 0 && (
+        {images.length === 0 && (
           <div className="text-center text-foreground/70 py-16">
             No images yet.{" "}
             <Link href="/upload" className="underline">

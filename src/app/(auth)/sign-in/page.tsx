@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { signInWithPassword } from "@/app/actions/auth";
+import { use } from "react";
 
 export default function SignInPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
+  const params = use(searchParams);
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl p-8 shadow-lg backdrop-blur">
@@ -13,9 +15,9 @@ export default function SignInPage({
         <p className="text-sm text-foreground/70 mb-6">
           Welcome back to AI Image Gallery
         </p>
-        {searchParams?.error && (
+        {params?.error && (
           <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 text-sm px-3 py-2">
-            {searchParams.error}
+            {params.error}
           </div>
         )}
         <form className="space-y-4" action={signInWithPassword}>
