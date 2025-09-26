@@ -25,10 +25,17 @@ jest.mock("react-dropzone", () => ({
   useDropzone: jest.fn(),
 }));
 
+// Mock useUploadStatus hook
+jest.mock("../../hooks/useUploadStatus", () => ({
+  useUploadStatus: jest.fn(),
+}));
+
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUse = use as jest.MockedFunction<typeof use>;
 const mockUploadSingleImage = require("../../app/actions/upload")
   .uploadSingleImage as jest.MockedFunction<any>;
+const mockUseUploadStatus = require("../../hooks/useUploadStatus")
+  .useUploadStatus as jest.MockedFunction<any>;
 const mockUseDropzone = require("react-dropzone")
   .useDropzone as jest.MockedFunction<any>;
 
@@ -48,6 +55,24 @@ describe("UploadPage", () => {
     jest.clearAllMocks();
     mockUseRouter.mockReturnValue(mockRouter);
     mockUse.mockReturnValue({});
+
+    // Mock useUploadStatus
+    mockUseUploadStatus.mockReturnValue({
+      activeUploads: [],
+      isLoading: false,
+      startBackgroundUpload: jest.fn(),
+      refreshUploads: jest.fn(),
+      getUploadSummary: jest.fn(() => ({
+        total: 0,
+        uploading: 0,
+        processing: 0,
+        aiProcessing: 0,
+        pending: 0,
+        failed: 0,
+        inProgress: 0,
+      })),
+      clearStuckUploads: jest.fn(),
+    });
 
     // Mock useDropzone with default behavior
     mockUseDropzone.mockReturnValue({
@@ -97,10 +122,9 @@ describe("UploadPage", () => {
 
     // Assert
     expect(screen.getByText(errorMessage)).toBeInTheDocument();
-    expect(screen.getByText(errorMessage)).toHaveClass(
-      "border-red-500/40",
-      "bg-red-500/10"
-    );
+    // Check that the error message container has the correct styling
+    const errorContainer = screen.getByText(errorMessage).closest("div");
+    expect(errorContainer).toHaveClass("border-red-500/40", "bg-red-500/10");
   });
 
   it("should display success message when provided in search params", () => {
@@ -115,7 +139,9 @@ describe("UploadPage", () => {
 
     // Assert
     expect(screen.getByText(successMessage)).toBeInTheDocument();
-    expect(screen.getByText(successMessage)).toHaveClass(
+    // Check that the success message container has the correct styling
+    const successContainer = screen.getByText(successMessage).closest("div");
+    expect(successContainer).toHaveClass(
       "border-green-500/40",
       "bg-green-500/10"
     );
