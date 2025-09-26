@@ -4,34 +4,114 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-export async function uploadImage(formData: FormData) {
+export async function uploadSingleImage(file: File, caption?: string) {
   try {
-    console.log("Upload action started");
-
-    const file = formData.get("file") as File;
-    const caption = formData.get("caption") as string;
-
-    console.log("File:", file?.name, "Size:", file?.size, "Type:", file?.type);
-
-    if (!file) {
-      console.log("No file provided");
-      redirect("/upload?error=" + encodeURIComponent("No file selected"));
-    }
+    console.log("Single upload started for:", file.name);
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
-      console.log("Invalid file type:", file.type);
-      redirect("/upload?error=" + encodeURIComponent("File must be an image"));
+      throw new Error(`File "${file.name}" must be an image`);
     }
 
     // Validate file size (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50MB
     if (file.size > maxSize) {
-      console.log("File too large:", file.size);
-      redirect(
-        "/upload?error=" +
-          encodeURIComponent("File size must be less than 50MB")
+      throw new Error(`File "${file.name}" size must be less than 50MB`);
+    }
+
+    const supabase = getSupabaseServerClient();
+
+    // Get current user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Generate unique filename
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2)}.${fileExt}`;
+    const filePath = `${user.id}/${fileName}`;
+
+    // Upload file to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from("images")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw new Error(
+        `Failed to upload "${file.name}": ${uploadError.message}`
       );
+    }
+
+    // Insert record into database
+    const { error: dbError } = await supabase.from("images").insert({
+      user_id: user.id,
+      filename: fileName,
+      original_name: file.name,
+      file_size: file.size,
+      mime_type: file.type,
+      storage_path: filePath,
+      caption: caption || null,
+    });
+
+    if (dbError) {
+      // Clean up uploaded file if database insert fails
+      await supabase.storage.from("images").remove([filePath]);
+      throw new Error(
+        `Failed to save "${file.name}" to database: ${dbError.message}`
+      );
+    }
+
+    console.log("Single upload successful for:", file.name);
+    return { success: true, filename: file.name };
+  } catch (error) {
+    console.error("Single upload error:", error);
+    throw error;
+  }
+}
+
+export async function uploadImage(formData: FormData) {
+  try {
+    console.log("Upload action started");
+
+    const files = formData.getAll("files") as File[];
+    const caption = formData.get("caption") as string;
+
+    console.log("Files:", files.length, "files selected");
+
+    if (!files || files.length === 0) {
+      console.log("No files provided");
+      redirect("/upload?error=" + encodeURIComponent("No files selected"));
+    }
+
+    // Validate all files
+    for (const file of files) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        console.log("Invalid file type:", file.type);
+        redirect(
+          "/upload?error=" +
+            encodeURIComponent(`File "${file.name}" must be an image`)
+        );
+      }
+
+      // Validate file size (50MB limit)
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (file.size > maxSize) {
+        console.log("File too large:", file.size);
+        redirect(
+          "/upload?error=" +
+            encodeURIComponent(
+              `File "${file.name}" size must be less than 50MB`
+            )
+        );
+      }
     }
 
     // Check environment variables
@@ -59,61 +139,96 @@ export async function uploadImage(formData: FormData) {
       redirect("/sign-in");
     }
 
-    // Generate unique filename
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2)}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
+    const uploadResults = [];
+    const uploadedPaths = [];
 
-    try {
-      console.log("Uploading to storage:", filePath);
+    // Process each file
+    for (const file of files) {
+      // Generate unique filename
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
-      // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from("images")
-        .upload(filePath, file);
+      try {
+        console.log("Uploading to storage:", filePath);
 
-      if (uploadError) {
-        console.log("Storage upload error:", uploadError.message);
-        redirect("/upload?error=" + encodeURIComponent(uploadError.message));
+        // Upload file to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from("images")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.log("Storage upload error:", uploadError.message);
+          // Clean up any previously uploaded files
+          if (uploadedPaths.length > 0) {
+            await supabase.storage.from("images").remove(uploadedPaths);
+          }
+          redirect(
+            "/upload?error=" +
+              encodeURIComponent(
+                `Failed to upload "${file.name}": ${uploadError.message}`
+              )
+          );
+        }
+
+        uploadedPaths.push(filePath);
+        console.log("Storage upload successful for:", file.name);
+
+        // Insert record into database
+        const { error: dbError } = await supabase.from("images").insert({
+          user_id: user.id,
+          filename: fileName,
+          original_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+          storage_path: filePath,
+          caption: caption || null,
+        });
+
+        if (dbError) {
+          console.log("Database insert error:", dbError.message);
+          // Clean up all uploaded files if database insert fails
+          await supabase.storage.from("images").remove(uploadedPaths);
+          redirect(
+            "/upload?error=" +
+              encodeURIComponent(
+                `Failed to save "${file.name}" to database: ${dbError.message}`
+              )
+          );
+        }
+
+        uploadResults.push({ filename: file.name, success: true });
+        console.log("Database insert successful for:", file.name);
+      } catch (fileError) {
+        console.log("File upload error:", fileError);
+        // Clean up any previously uploaded files
+        if (uploadedPaths.length > 0) {
+          await supabase.storage.from("images").remove(uploadedPaths);
+        }
+        redirect(
+          "/upload?error=" +
+            encodeURIComponent(
+              `Failed to upload "${file.name}". Please try again.`
+            )
+        );
       }
-
-      console.log("Storage upload successful, inserting to database");
-
-      // Insert record into database
-      const { error: dbError } = await supabase.from("images").insert({
-        user_id: user.id,
-        filename: fileName,
-        original_name: file.name,
-        file_size: file.size,
-        mime_type: file.type,
-        storage_path: filePath,
-        caption: caption || null,
-      });
-
-      if (dbError) {
-        console.log("Database insert error:", dbError.message);
-        // If database insert fails, clean up the uploaded file
-        await supabase.storage.from("images").remove([filePath]);
-        redirect("/upload?error=" + encodeURIComponent(dbError.message));
-      }
-
-      console.log("Upload successful!");
-
-      // Revalidate the dashboard to show the new image
-      revalidatePath("/dashboard");
-      redirect(
-        "/dashboard?success=" +
-          encodeURIComponent("Image uploaded successfully!")
-      );
-    } catch (error) {
-      console.log("Upload error:", error);
-      redirect(
-        "/upload?error=" +
-          encodeURIComponent("Upload failed. Please try again.")
-      );
     }
+
+    console.log("All uploads successful!");
+
+    // Revalidate pages to show the new images
+    revalidatePath("/dashboard");
+    revalidatePath("/");
+    redirect(
+      "/?success=" +
+        encodeURIComponent(
+          `${files.length} image${
+            files.length > 1 ? "s" : ""
+          } uploaded successfully!`
+        )
+    );
   } catch (error) {
     console.log("Outer catch error:", error);
     redirect(
