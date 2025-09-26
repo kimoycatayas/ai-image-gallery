@@ -111,8 +111,7 @@ export default function DashboardPage() {
   }, []);
 
   // Use upload status hook for background uploads
-  const { activeUploads, refreshUploads, clearStuckUploads } =
-    useUploadStatus(refreshGallery);
+  const { activeUploads, clearStuckUploads } = useUploadStatus(refreshGallery);
 
   // Toast notification state
   const [toast, setToast] = useState<{
@@ -174,7 +173,7 @@ export default function DashboardPage() {
 
     // Set up real-time subscription for gallery updates
     const supabase = getSupabaseBrowserClient();
-    let subscription: any = null;
+    let subscription: ReturnType<typeof supabase.channel> | null = null;
 
     const setupGallerySubscription = async () => {
       const {

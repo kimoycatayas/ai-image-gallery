@@ -80,7 +80,7 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
                   thumbnailSignedUrl = thumbnailData.signedUrl;
                 }
               }
-            } catch (urlError) {
+            } catch {
               console.log(
                 "Skipping signed URLs for image still uploading:",
                 img.id

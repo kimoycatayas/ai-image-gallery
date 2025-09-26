@@ -13,7 +13,7 @@ export function createMockFormData(data: Record<string, string>): FormData {
 // Create mock Supabase auth response
 export function createMockAuthResponse(
   success: boolean,
-  user?: any,
+  user?: { id: string; email: string },
   error?: { message: string }
 ) {
   if (success) {
@@ -148,7 +148,7 @@ export function createMockStorageResponse(success: boolean, error?: string) {
  */
 export function createMockDatabaseResponse(
   success: boolean,
-  data?: any,
+  data?: unknown,
   error?: string
 ) {
   if (success) {

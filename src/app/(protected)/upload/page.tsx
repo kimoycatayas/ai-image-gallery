@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import React, { useState, use } from "react";
 import { useDropzone } from "react-dropzone";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation"; // Removed as not needed
 import { useUploadStatus } from "@/hooks/useUploadStatus";
 
 interface FileUploadStatus {
@@ -20,7 +20,7 @@ export default function UploadPage({
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const params = use(searchParams);
-  const router = useRouter();
+  // const router = useRouter(); // Removed as not needed after removing redirect
   const [, setSelectedFiles] = useState<FileList | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatuses, setUploadStatuses] = useState<FileUploadStatus[]>([]);
@@ -57,8 +57,7 @@ export default function UploadPage({
         await startBackgroundUpload(dt.files, caption);
         console.log("Background upload completed successfully");
 
-        // Show success message
-        const fileCount = statuses.length;
+        // Show success message (removed unused fileCount variable)
 
         // Clear the form for new uploads
         setSelectedFiles(null);
@@ -88,8 +87,8 @@ export default function UploadPage({
         setIsUploading(false);
       }
     },
-    [isUploading, startBackgroundUpload, router]
-  ); // Removed uploadStatuses from deps to avoid stale closure
+    [isUploading, startBackgroundUpload, uploadStatuses]
+  ); // Removed router from deps as it's not needed
 
   const processFiles = React.useCallback(
     (files: FileList | null) => {

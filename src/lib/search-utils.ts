@@ -8,7 +8,13 @@ interface ImageRecord {
   storage_path: string;
   thumbnail_url: string | null;
   created_at: string;
-  processing_status: "pending" | "processing" | "completed" | "failed";
+  processing_status:
+    | "uploading"
+    | "processing"
+    | "pending"
+    | "ai_processing"
+    | "completed"
+    | "failed";
   tags: string[] | null;
   description: string | null;
   dominant_colors: string[] | null;

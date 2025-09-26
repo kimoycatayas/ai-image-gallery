@@ -18,7 +18,13 @@ interface ImageModalProps {
     original_name: string;
     caption?: string;
     created_at: string;
-    processing_status: "pending" | "processing" | "completed" | "failed";
+    processing_status:
+      | "uploading"
+      | "processing"
+      | "pending"
+      | "ai_processing"
+      | "completed"
+      | "failed";
     tags?: string[];
     description?: string;
     dominant_colors?: string[];
@@ -69,7 +75,6 @@ export default function ImageModal({
     }
 
     const { width, height } = imageDimensions;
-    const aspectRatio = width / height;
     const viewportWidth =
       typeof window !== "undefined" ? window.innerWidth : 1200;
     const viewportHeight =
@@ -89,15 +94,13 @@ export default function ImageModal({
     const availableImageHeight = maxModalHeight - headerHeight - padding;
 
     // Calculate the optimal image display size while preserving aspect ratio
-    let imageDisplayWidth, imageDisplayHeight;
-
     // Scale image to fit within available space
     const scaleX = availableImageWidth / width;
     const scaleY = availableImageHeight / height;
     const scale = Math.min(scaleX, scaleY, 1); // Don't upscale beyond original size
 
-    imageDisplayWidth = width * scale;
-    imageDisplayHeight = height * scale;
+    const imageDisplayWidth = width * scale;
+    const imageDisplayHeight = height * scale;
 
     // Calculate final modal dimensions
     const modalWidth = Math.min(
@@ -115,8 +118,8 @@ export default function ImageModal({
     };
   };
 
-  const handleImageLoad = (event: any) => {
-    const img = event.target;
+  const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.target as HTMLImageElement;
     setImageDimensions({
       width: img.naturalWidth,
       height: img.naturalHeight,

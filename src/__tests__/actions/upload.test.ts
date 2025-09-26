@@ -51,11 +51,17 @@ jest.mock("../../lib/supabase/server", () => ({
 
 const mockRedirect = redirect as jest.MockedFunction<typeof redirect>;
 const mockGenerateThumbnail = require("../../lib/image-processing")
-  .generateThumbnail as jest.MockedFunction<any>;
+  .generateThumbnail as jest.MockedFunction<
+  typeof import("../../lib/image-processing").generateThumbnail
+>;
 const mockFileToBuffer = require("../../lib/image-processing")
-  .fileToBuffer as jest.MockedFunction<any>;
+  .fileToBuffer as jest.MockedFunction<
+  typeof import("../../lib/image-processing").fileToBuffer
+>;
 const mockAnalyzeImage = require("../../lib/ai-analysis")
-  .analyzeImage as jest.MockedFunction<any>;
+  .analyzeImage as jest.MockedFunction<
+  typeof import("../../lib/ai-analysis").analyzeImage
+>;
 
 describe("Upload Actions", () => {
   beforeEach(() => {
@@ -282,7 +288,7 @@ describe("Upload Actions", () => {
       // Act
       try {
         await uploadImage(formData);
-      } catch (error) {
+      } catch {
         // Expected to throw due to mocked process.exit
       }
 

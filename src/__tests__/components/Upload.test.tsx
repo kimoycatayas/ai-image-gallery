@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { use } from "react";
@@ -32,12 +32,14 @@ jest.mock("../../hooks/useUploadStatus", () => ({
 
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUse = use as jest.MockedFunction<typeof use>;
-const mockUploadSingleImage = require("../../app/actions/upload")
-  .uploadSingleImage as jest.MockedFunction<any>;
 const mockUseUploadStatus = require("../../hooks/useUploadStatus")
-  .useUploadStatus as jest.MockedFunction<any>;
+  .useUploadStatus as jest.MockedFunction<
+  typeof import("../../hooks/useUploadStatus").useUploadStatus
+>;
 const mockUseDropzone = require("react-dropzone")
-  .useDropzone as jest.MockedFunction<any>;
+  .useDropzone as jest.MockedFunction<
+  typeof import("react-dropzone").useDropzone
+>;
 
 describe("UploadPage", () => {
   const mockRouter = {

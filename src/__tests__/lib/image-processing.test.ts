@@ -31,7 +31,7 @@ const mockSharpInstance = {
 describe("Image Processing", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSharp.mockReturnValue(mockSharpInstance as any);
+    mockSharp.mockReturnValue(mockSharpInstance as ReturnType<typeof sharp>);
   });
 
   describe("generateThumbnail", () => {
