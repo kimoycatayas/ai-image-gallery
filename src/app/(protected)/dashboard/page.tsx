@@ -7,7 +7,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import ImageModal from "@/components/ImageModal";
 import SearchBar, { SearchFilters } from "@/components/SearchBar";
 import { filterImages } from "@/lib/search-utils";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 interface ImageRecord {
   id: string;
@@ -76,6 +76,7 @@ async function getUserImages(): Promise<ImageRecord[]> {
 
 export default function DashboardPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [images, setImages] = useState<ImageRecord[]>([]);
   const [filteredImages, setFilteredImages] = useState<ImageRecord[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageRecord | null>(null);
@@ -89,7 +90,47 @@ export default function DashboardPage() {
     similarTo: null,
   });
 
-  const successMessage = searchParams.get("success");
+  // Toast notification state
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  // Handle success/error messages from URL params
+  useEffect(() => {
+    const successMessage = searchParams.get("success");
+    const errorMessage = searchParams.get("error");
+
+    if (successMessage) {
+      setToast({ message: successMessage, type: "success" });
+      // Clean up URL by removing the success param
+      const newSearchParams = new URLSearchParams(searchParams.toString());
+      newSearchParams.delete("success");
+      const newUrl = newSearchParams.toString()
+        ? `/dashboard?${newSearchParams.toString()}`
+        : "/dashboard";
+      router.replace(newUrl);
+    } else if (errorMessage) {
+      setToast({ message: errorMessage, type: "error" });
+      // Clean up URL by removing the error param
+      const newSearchParams = new URLSearchParams(searchParams.toString());
+      newSearchParams.delete("error");
+      const newUrl = newSearchParams.toString()
+        ? `/dashboard?${newSearchParams.toString()}`
+        : "/dashboard";
+      router.replace(newUrl);
+    }
+  }, [searchParams, router]);
+
+  // Auto-hide toast after 5 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Load images on component mount
   useEffect(() => {
@@ -228,9 +269,29 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {successMessage && (
-        <div className="mb-6 rounded-md border border-green-500/40 bg-green-500/10 text-sm px-3 py-2">
-          {successMessage}
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed top-4 right-4 z-50 max-w-md rounded-lg shadow-lg border px-4 py-3 transition-all duration-300 ease-in-out ${
+            toast.type === "success"
+              ? "bg-green-500/10 border-green-500/40 text-green-300"
+              : "bg-red-500/10 border-red-500/40 text-red-300"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">
+                {toast.type === "success" ? "✅" : "❌"}
+              </span>
+              <span className="text-sm font-medium">{toast.message}</span>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-3 text-lg hover:opacity-70 transition-opacity"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
 

@@ -79,7 +79,7 @@ export default function UploadPage({
       setTimeout(() => {
         if (successCount > 0) {
           router.push(
-            `/?success=${encodeURIComponent(
+            `/dashboard?success=${encodeURIComponent(
               `${successCount} image${
                 successCount > 1 ? "s" : ""
               } uploaded successfully!`
@@ -94,38 +94,44 @@ export default function UploadPage({
     }
   }, [uploadStatuses, isUploading, router]);
 
-  const processFiles = React.useCallback((files: FileList | null) => {
-    setSelectedFiles(files);
+  const processFiles = React.useCallback(
+    (files: FileList | null) => {
+      setSelectedFiles(files);
 
-    // Create preview URLs and initial status for each file
-    if (files) {
-      const fileStatuses: FileUploadStatus[] = Array.from(files).map(
-        (file) => ({
-          file,
-          preview: URL.createObjectURL(file),
-          status: "pending" as const,
-        })
-      );
-      setUploadStatuses(fileStatuses);
+      // Create preview URLs and initial status for each file
+      if (files) {
+        const fileStatuses: FileUploadStatus[] = Array.from(files).map(
+          (file) => ({
+            file,
+            preview: URL.createObjectURL(file),
+            status: "pending" as const,
+          })
+        );
+        setUploadStatuses(fileStatuses);
 
-      // Auto-start upload after a brief delay to show previews
-      setTimeout(() => {
-        startUpload();
-      }, 500);
-    } else {
-      setUploadStatuses([]);
-    }
-  }, [startUpload]);
+        // Auto-start upload after a brief delay to show previews
+        setTimeout(() => {
+          startUpload();
+        }, 500);
+      } else {
+        setUploadStatuses([]);
+      }
+    },
+    [startUpload]
+  );
 
   // React Dropzone configuration
-  const onDrop = React.useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      // Create a FileList-like object
-      const dt = new DataTransfer();
-      acceptedFiles.forEach((file) => dt.items.add(file));
-      processFiles(dt.files);
-    }
-  }, [processFiles]);
+  const onDrop = React.useCallback(
+    (acceptedFiles: File[]) => {
+      if (acceptedFiles.length > 0) {
+        // Create a FileList-like object
+        const dt = new DataTransfer();
+        acceptedFiles.forEach((file) => dt.items.add(file));
+        processFiles(dt.files);
+      }
+    },
+    [processFiles]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

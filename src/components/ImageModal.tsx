@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { X, RefreshCw, Calendar, Tag, Palette, FileText } from "lucide-react";
 
@@ -38,7 +38,83 @@ export default function ImageModal({
   onColorFilter,
   onTagSearch,
 }: ImageModalProps) {
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
+
+  // Reset image dimensions and loading state when modal opens/closes or image changes
+  useEffect(() => {
+    if (!isOpen) {
+      setImageDimensions(null);
+      setIsImageLoaded(false);
+    }
+  }, [isOpen, image.id]);
+
   if (!isOpen) return null;
+
+  // Calculate modal size based on image dimensions
+  const getModalStyles = () => {
+    if (!imageDimensions) {
+      return {};
+    }
+
+    const { width, height } = imageDimensions;
+    const aspectRatio = width / height;
+    const viewportWidth =
+      typeof window !== "undefined" ? window.innerWidth : 1200;
+    const viewportHeight =
+      typeof window !== "undefined" ? window.innerHeight : 800;
+
+    // Calculate maximum dimensions while preserving aspect ratio
+    const maxModalWidth = Math.min(viewportWidth * 0.95, 1600); // 95% of viewport width, max 1600px
+    const maxModalHeight = viewportHeight * 0.95; // 95% of viewport height
+
+    // Account for UI elements
+    const metadataPanelWidth = viewportWidth > 1024 ? 400 : 0;
+    const headerHeight = 80;
+    const padding = 24; // Modal padding
+
+    // Available space for the image
+    const availableImageWidth = maxModalWidth - metadataPanelWidth - padding;
+    const availableImageHeight = maxModalHeight - headerHeight - padding;
+
+    // Calculate the optimal image display size while preserving aspect ratio
+    let imageDisplayWidth, imageDisplayHeight;
+
+    // Scale image to fit within available space
+    const scaleX = availableImageWidth / width;
+    const scaleY = availableImageHeight / height;
+    const scale = Math.min(scaleX, scaleY, 1); // Don't upscale beyond original size
+
+    imageDisplayWidth = width * scale;
+    imageDisplayHeight = height * scale;
+
+    // Calculate final modal dimensions
+    const modalWidth = Math.min(
+      maxModalWidth,
+      Math.max(800, imageDisplayWidth + metadataPanelWidth + padding)
+    );
+    const modalHeight = Math.min(
+      maxModalHeight,
+      Math.max(600, imageDisplayHeight + headerHeight + padding)
+    );
+
+    return {
+      width: Math.floor(modalWidth),
+      height: Math.floor(modalHeight),
+    };
+  };
+
+  const handleImageLoad = (event: any) => {
+    const img = event.target;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    });
+    setIsImageLoaded(true);
+  };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -96,9 +172,16 @@ export default function ImageModal({
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={handleBackdropClick}
     >
-      <div className="bg-background/95 backdrop-blur border border-white/10 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div
+        className="bg-background/95 backdrop-blur border border-white/10 rounded-2xl overflow-hidden transition-all duration-300 max-w-7xl w-full flex flex-col"
+        style={{
+          maxWidth: "95vw",
+          maxHeight: "95vh",
+          ...getModalStyles(),
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
+        <div className="flex items-center justify-between p-6 border-b border-white/10 flex-shrink-0">
           <h2 className="text-xl font-semibold truncate pr-4">
             {image.original_name}
           </h2>
@@ -139,30 +222,43 @@ export default function ImageModal({
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row max-h-[calc(90vh-80px)]">
+        <div className="flex flex-col lg:flex-row flex-1 min-h-0">
           {/* Image Section */}
-          <div className="lg:w-2/3 bg-black/20 flex items-center justify-center p-6">
-            <div className="relative w-full h-full max-h-[500px] lg:max-h-[600px]">
+          <div className="lg:w-2/3 bg-black/20 flex items-center justify-center p-4 lg:p-6 min-h-0 overflow-hidden">
+            <div className="relative w-full h-full flex items-center justify-center min-h-0">
               <Image
-                src={image.thumbnailSignedUrl || image.signedUrl}
+                src={image.signedUrl} // Always use original quality image
                 alt={image.caption || image.original_name}
-                fill
-                className="object-contain rounded-lg"
+                width={imageDimensions?.width || 800}
+                height={imageDimensions?.height || 600}
+                className="object-contain rounded-lg max-w-full max-h-full"
                 sizes="(max-width: 1024px) 100vw, 66vw"
                 priority
+                onLoad={handleImageLoad}
+                style={{
+                  width: "auto",
+                  height: "auto",
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                }}
               />
-              {image.thumbnailSignedUrl && (
-                <div className="absolute top-2 left-2">
-                  <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
-                    Optimized
-                  </span>
+              {/* Show loading state while image loads */}
+              {!isImageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
                 </div>
               )}
+              {/* Full Quality Indicator */}
+              <div className="absolute top-2 left-2">
+                <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded">
+                  Full Quality
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Details Section */}
-          <div className="lg:w-1/3 p-6 overflow-y-auto">
+          <div className="lg:w-1/3 p-6 overflow-y-auto flex-shrink-0 min-h-0">
             <div className="space-y-6">
               {/* Upload Info */}
               <div>
