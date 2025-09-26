@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { X, RefreshCw, Calendar, Tag, Palette, FileText } from "lucide-react";
+import {
+  X,
+  RefreshCw,
+  Calendar,
+  Tag,
+  Palette,
+  FileText,
+  Download,
+} from "lucide-react";
 
 interface ImageModalProps {
   image: {
@@ -114,6 +122,31 @@ export default function ImageModal({
       height: img.naturalHeight,
     });
     setIsImageLoaded(true);
+  };
+
+  // Handle image download
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(image.signedUrl);
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = image.original_name || `image-${image.id}.jpg`;
+
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up the blob URL
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download image:", error);
+      alert("Failed to download image. Please try again.");
+    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -230,6 +263,15 @@ export default function ImageModal({
                 Find similar
               </button>
             )}
+
+            {/* Download Button */}
+            <button
+              onClick={handleDownload}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              title="Download image"
+            >
+              <Download className="w-5 h-5" />
+            </button>
 
             <button
               onClick={onClose}
