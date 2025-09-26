@@ -176,9 +176,15 @@ async function processUploadInBackground(
       .update({ upload_progress: 30 })
       .eq("id", imageId);
 
-    // Generate thumbnail
+    // Generate thumbnail (optional - fallback to original if Sharp fails)
     console.log("Generating thumbnail for:", file.name);
-    const thumbnailBuffer = await generateThumbnail(fileBuffer);
+    let thumbnailBuffer;
+    try {
+      thumbnailBuffer = await generateThumbnail(fileBuffer);
+    } catch (error) {
+      console.warn("Thumbnail generation failed, using original image:", error);
+      thumbnailBuffer = fileBuffer; // Use original as fallback
+    }
 
     // Update progress
     await supabase

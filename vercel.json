@@ -10,5 +10,7 @@
     "app/api/reanalyze-image/route.ts": {
       "maxDuration": 30
     }
-  }
+  },
+  "installCommand": "npm install --include=optional",
+  "buildCommand": "npm run build"
 }

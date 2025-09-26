@@ -1,0 +1,14 @@
+# Ignore test files
+src/__tests__
+jest.config.js
+jest.setup.js
+coverage/
+
+# Ignore documentation
+docs/
+*.md
+!README.md
+
+# Ignore development files
+.env.local
+.env.development.local

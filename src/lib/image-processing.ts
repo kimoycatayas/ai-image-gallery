@@ -1,5 +1,3 @@
-import sharp from "sharp";
-
 export interface ThumbnailOptions {
   width?: number;
   height?: number;
@@ -19,6 +17,14 @@ export async function generateThumbnail(
   const { width = 300, height = 300, quality = 80 } = options;
 
   try {
+    // Try to load sharp dynamically
+    const sharp = await import("sharp").then(m => m.default).catch(() => null);
+    
+    if (!sharp) {
+      console.warn("Sharp not available, returning original buffer");
+      return imageBuffer;
+    }
+
     const thumbnail = await sharp(imageBuffer)
       .resize(width, height, {
         fit: "cover", // Crop to fill the exact dimensions
@@ -32,8 +38,9 @@ export async function generateThumbnail(
 
     return thumbnail;
   } catch (error) {
-    console.error("Error generating thumbnail:", error);
-    throw new Error("Failed to generate thumbnail");
+    console.error("Error generating thumbnail, falling back to original:", error);
+    // Fallback: return original buffer if thumbnail generation fails
+    return imageBuffer;
   }
 }
 
@@ -44,6 +51,19 @@ export async function generateThumbnail(
  */
 export async function getImageMetadata(imageBuffer: Buffer) {
   try {
+    // Try to load sharp dynamically
+    const sharp = await import("sharp").then(m => m.default).catch(() => null);
+    
+    if (!sharp) {
+      console.warn("Sharp not available, returning basic metadata");
+      return {
+        width: undefined,
+        height: undefined,
+        format: undefined,
+        size: imageBuffer.length,
+      };
+    }
+
     const metadata = await sharp(imageBuffer).metadata();
     return {
       width: metadata.width,
@@ -53,7 +73,12 @@ export async function getImageMetadata(imageBuffer: Buffer) {
     };
   } catch (error) {
     console.error("Error getting image metadata:", error);
-    throw new Error("Failed to get image metadata");
+    return {
+      width: undefined,
+      height: undefined,
+      format: undefined,
+      size: imageBuffer.length,
+    };
   }
 }
 
