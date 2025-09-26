@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { generateThumbnail, fileToBuffer } from "@/lib/image-processing";
 
 export async function uploadSingleImage(file: File, caption?: string) {
   try {
@@ -33,15 +34,26 @@ export async function uploadSingleImage(file: File, caption?: string) {
 
     // Generate unique filename
     const fileExt = file.name.split(".").pop();
-    const fileName = `${Date.now()}-${Math.random()
+    const baseFileName = `${Date.now()}-${Math.random()
       .toString(36)
-      .substring(2)}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
+      .substring(2)}`;
+    const originalFileName = `${baseFileName}.${fileExt}`;
+    const thumbnailFileName = `${baseFileName}_thumb.jpg`; // Always JPEG for thumbnails
 
-    // Upload file to Supabase Storage
+    const originalFilePath = `${user.id}/${originalFileName}`;
+    const thumbnailFilePath = `${user.id}/thumbnails/${thumbnailFileName}`;
+
+    // Convert file to buffer for processing
+    const fileBuffer = await fileToBuffer(file);
+
+    // Generate thumbnail
+    console.log("Generating thumbnail for:", file.name);
+    const thumbnailBuffer = await generateThumbnail(fileBuffer);
+
+    // Upload original file to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from("images")
-      .upload(filePath, file);
+      .upload(originalFilePath, file);
 
     if (uploadError) {
       throw new Error(
@@ -49,20 +61,38 @@ export async function uploadSingleImage(file: File, caption?: string) {
       );
     }
 
+    // Upload thumbnail to Supabase Storage
+    const { error: thumbnailUploadError } = await supabase.storage
+      .from("images")
+      .upload(thumbnailFilePath, thumbnailBuffer, {
+        contentType: "image/jpeg",
+      });
+
+    if (thumbnailUploadError) {
+      // Clean up original file if thumbnail upload fails
+      await supabase.storage.from("images").remove([originalFilePath]);
+      throw new Error(
+        `Failed to upload thumbnail for "${file.name}": ${thumbnailUploadError.message}`
+      );
+    }
+
     // Insert record into database
     const { error: dbError } = await supabase.from("images").insert({
       user_id: user.id,
-      filename: fileName,
+      filename: originalFileName,
       original_name: file.name,
       file_size: file.size,
       mime_type: file.type,
-      storage_path: filePath,
+      storage_path: originalFilePath,
+      thumbnail_url: thumbnailFilePath,
       caption: caption || null,
     });
 
     if (dbError) {
-      // Clean up uploaded file if database insert fails
-      await supabase.storage.from("images").remove([filePath]);
+      // Clean up uploaded files if database insert fails
+      await supabase.storage
+        .from("images")
+        .remove([originalFilePath, thumbnailFilePath]);
       throw new Error(
         `Failed to save "${file.name}" to database: ${dbError.message}`
       );

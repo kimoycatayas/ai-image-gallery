@@ -8,8 +8,10 @@ interface ImageRecord {
   original_name: string;
   caption: string | null;
   storage_path: string;
+  thumbnail_url: string | null;
   created_at: string;
   signedUrl?: string | null;
+  thumbnailSignedUrl?: string | null;
 }
 
 async function getUserImages(): Promise<ImageRecord[]> {
@@ -31,16 +33,27 @@ async function getUserImages(): Promise<ImageRecord[]> {
     return [];
   }
 
-  // Generate signed URLs for each image
+  // Generate signed URLs for each image (both original and thumbnail)
   const imagesWithUrls = await Promise.all(
     (images || []).map(async (img) => {
-      const { data } = await supabase.storage
+      // Get signed URL for original image
+      const { data: originalData } = await supabase.storage
         .from("images")
         .createSignedUrl(img.storage_path, 3600); // 1 hour expiry
 
+      // Get signed URL for thumbnail (if exists)
+      let thumbnailSignedUrl = null;
+      if (img.thumbnail_url) {
+        const { data: thumbnailData } = await supabase.storage
+          .from("images")
+          .createSignedUrl(img.thumbnail_url, 3600);
+        thumbnailSignedUrl = thumbnailData?.signedUrl || null;
+      }
+
       return {
         ...img,
-        signedUrl: data?.signedUrl || null,
+        signedUrl: originalData?.signedUrl || null,
+        thumbnailSignedUrl,
       };
     })
   );
@@ -84,17 +97,25 @@ export default async function DashboardPage({
               className="rounded-xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition"
             >
               <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-background/60">
-                {img.signedUrl ? (
+                {img.thumbnailSignedUrl || img.signedUrl ? (
                   <Image
-                    src={img.signedUrl}
+                    src={img.thumbnailSignedUrl || img.signedUrl}
                     alt={img.caption || img.original_name}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 200px"
-                    className="object-cover"
+                    className="object-cover hover:scale-105 transition-transform cursor-pointer"
+                    title="Click to view full size"
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-foreground/50">
                     Failed to load image
+                  </div>
+                )}
+
+                {/* Thumbnail indicator */}
+                {img.thumbnailSignedUrl && (
+                  <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                    Optimized
                   </div>
                 )}
               </div>
