@@ -9,6 +9,7 @@ interface ImageRecord {
   caption: string | null;
   storage_path: string;
   created_at: string;
+  signedUrl?: string | null;
 }
 
 async function getUserImages(): Promise<ImageRecord[]> {
@@ -30,7 +31,21 @@ async function getUserImages(): Promise<ImageRecord[]> {
     return [];
   }
 
-  return images || [];
+  // Generate signed URLs for each image
+  const imagesWithUrls = await Promise.all(
+    (images || []).map(async (img) => {
+      const { data } = await supabase.storage
+        .from("images")
+        .createSignedUrl(img.storage_path, 3600); // 1 hour expiry
+
+      return {
+        ...img,
+        signedUrl: data?.signedUrl || null,
+      };
+    })
+  );
+
+  return imagesWithUrls;
 }
 
 export default async function DashboardPage({
@@ -69,13 +84,19 @@ export default async function DashboardPage({
               className="rounded-xl border border-white/10 bg-white/5 p-3 hover:bg-white/10 transition"
             >
               <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-background/60">
-                <Image
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/images/${img.storage_path}`}
-                  alt={img.caption || img.original_name}
-                  fill
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 200px"
-                  className="object-cover"
-                />
+                {img.signedUrl ? (
+                  <Image
+                    src={img.signedUrl}
+                    alt={img.caption || img.original_name}
+                    fill
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 200px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-foreground/50">
+                    Failed to load image
+                  </div>
+                )}
               </div>
               <div className="mt-3">
                 <div className="text-sm text-foreground/80 font-medium truncate">
