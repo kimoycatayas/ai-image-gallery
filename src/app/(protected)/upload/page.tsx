@@ -69,11 +69,6 @@ export default function UploadPage({
         }
       } catch (error) {
         console.error("Upload error:", error);
-        alert(
-          `Upload failed: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
 
         // Update all statuses to error
         setUploadStatuses((prev) =>
@@ -268,6 +263,9 @@ export default function UploadPage({
                 {isDragActive
                   ? "Drop your images here..."
                   : "Drag and drop your images here, or click to browse"}
+              </p>
+              <p className="text-xs text-foreground/40 mt-1">
+                Maximum file size: 10MB per image
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-6 py-3 font-medium hover:opacity-90 transition">

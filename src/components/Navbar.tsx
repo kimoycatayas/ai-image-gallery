@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import LoadingSpinner from "./LoadingSpinner";
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Hide navbar on auth pages
   if (pathname === "/sign-in" || pathname === "/sign-up") {
@@ -15,10 +17,17 @@ export default function Navbar() {
   }
 
   async function handleConfirmLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setShowConfirm(false);
-    router.replace("/sign-in");
-    router.refresh();
+    setIsLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setShowConfirm(false);
+      router.replace("/sign-in");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -51,30 +60,33 @@ export default function Navbar() {
       </div>
 
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center top-[70px]">
           <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowConfirm(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => !isLoggingOut && setShowConfirm(false)}
           />
-          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-background p-6 shadow-xl">
+          <div className="relative w-full max-w-sm mx-4 rounded-xl border border-white/10 bg-background p-6 shadow-xl">
             <h2 className="text-lg font-semibold mb-2">Confirm logout</h2>
-            <p className="text-sm text-foreground/70 mb-4">
+            <p className="text-sm text-foreground/70 mb-6">
               Are you sure you want to log out?
             </p>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowConfirm(false)}
-                className="px-3 py-1.5 rounded-md border border-white/15 hover:bg-white/5"
+                disabled={isLoggingOut}
+                className="px-4 py-2 rounded-lg border border-white/15 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLogout}
-                className="px-3 py-1.5 rounded-md bg-foreground text-background hover:opacity-90"
+                disabled={isLoggingOut}
+                className="px-4 py-2 rounded-lg bg-foreground text-background hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center gap-2"
               >
-                Logout
+                {isLoggingOut && <LoadingSpinner size="sm" />}
+                {isLoggingOut ? "Logging out..." : "Logout"}
               </button>
             </div>
           </div>

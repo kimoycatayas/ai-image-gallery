@@ -311,11 +311,6 @@ export default function DashboardPage() {
       console.log("Re-analysis started successfully");
     } catch (error) {
       console.error("Failed to re-analyze image:", error);
-      alert(
-        `Failed to re-analyze image: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
     } finally {
       setIsReanalyzing(false);
     }

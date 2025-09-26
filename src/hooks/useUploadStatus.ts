@@ -218,6 +218,20 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
     async (files: FileList, caption?: string) => {
       try {
         console.log("startBackgroundUpload called with", files.length, "files");
+
+        // Validate file sizes before uploading (10MB limit for Vercel)
+        const maxSize = 10 * 1024 * 1024; // 10MB for Vercel deployment
+        for (const file of Array.from(files)) {
+          if (file.size > maxSize) {
+            throw new Error(
+              `File "${file.name}" is too large. Please reduce to under 10MB and try again.`
+            );
+          }
+          if (!file.type.startsWith("image/")) {
+            throw new Error(`File "${file.name}" must be an image.`);
+          }
+        }
+
         const formData = new FormData();
 
         Array.from(files).forEach((file) => {
@@ -237,7 +251,27 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
         });
 
         console.log("Response status:", response.status);
-        const result = await response.json();
+
+        // Handle 413 Content Too Large error specifically
+        if (response.status === 413) {
+          throw new Error(
+            "File size too large. Please reduce image size and try again."
+          );
+        }
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (jsonError) {
+          // Handle case where response is not JSON (like 413 errors)
+          if (response.status === 413) {
+            throw new Error(
+              "File size too large. Please reduce image size and try again."
+            );
+          }
+          throw new Error(`Upload failed with status ${response.status}`);
+        }
+
         console.log("Response result:", result);
 
         if (!result.success) {

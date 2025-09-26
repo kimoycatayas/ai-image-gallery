@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "src/app/api/upload-background/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/analyze-image/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/reanalyze-image/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}

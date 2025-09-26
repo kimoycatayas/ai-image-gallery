@@ -1,13 +1,37 @@
-import Link from "next/link";
-import { signUpWithPassword } from "@/app/actions/auth";
-import { use } from "react";
+"use client";
 
-export default function SignUpPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const params = use(searchParams);
+import Link from "next/link";
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signUpWithPassword } from "@/app/actions/auth";
+import LoadingSpinner from "@/components/LoadingSpinner";
+
+export default function SignUpPage() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Get error from URL params
+  const urlError = searchParams.get("error");
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    const formData = new FormData(e.currentTarget);
+
+    try {
+      await signUpWithPassword(formData);
+      // The action handles the redirect on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl p-8 shadow-lg backdrop-blur">
@@ -15,12 +39,12 @@ export default function SignUpPage({
         <p className="text-sm text-foreground/70 mb-6">
           Join AI Image Gallery in seconds
         </p>
-        {params?.error && (
+        {(urlError || error) && (
           <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 text-sm px-3 py-2">
-            {params.error}
+            {urlError || error}
           </div>
         )}
-        <form className="space-y-4" action={signUpWithPassword}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label className="block text-sm mb-1" htmlFor="email">
               Email
@@ -30,8 +54,9 @@ export default function SignUpPage({
               name="email"
               type="email"
               required
+              disabled={isLoading}
               placeholder="you@example.com"
-              className="w-full rounded-lg border border-white/15 bg-background/60 px-3 py-2 outline-none focus:ring-2 focus:ring-foreground/30"
+              className="w-full rounded-lg border border-white/15 bg-background/60 px-3 py-2 outline-none focus:ring-2 focus:ring-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
           <div>
@@ -43,15 +68,18 @@ export default function SignUpPage({
               name="password"
               type="password"
               required
+              disabled={isLoading}
               placeholder="••••••••"
-              className="w-full rounded-lg border border-white/15 bg-background/60 px-3 py-2 outline-none focus:ring-2 focus:ring-foreground/30"
+              className="w-full rounded-lg border border-white/15 bg-background/60 px-3 py-2 outline-none focus:ring-2 focus:ring-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
           <button
             type="submit"
-            className="w-full rounded-lg bg-foreground text-background py-2.5 font-medium hover:opacity-90 transition"
+            disabled={isLoading}
+            className="w-full rounded-lg bg-foreground text-background py-2.5 font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Create account
+            {isLoading && <LoadingSpinner size="sm" />}
+            {isLoading ? "Creating account..." : "Create account"}
           </button>
         </form>
         <p className="text-sm text-foreground/70 mt-6">

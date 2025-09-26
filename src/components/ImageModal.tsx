@@ -148,7 +148,6 @@ export default function ImageModal({
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Failed to download image:", error);
-      alert("Failed to download image. Please try again.");
     }
   };
 
