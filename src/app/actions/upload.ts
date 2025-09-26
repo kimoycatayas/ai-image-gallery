@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { generateThumbnail, fileToBuffer } from "@/lib/image-processing";
+import { analyzeImage } from "@/lib/ai-analysis";
 
 export async function uploadSingleImage(file: File, caption?: string) {
   try {
@@ -77,29 +78,103 @@ export async function uploadSingleImage(file: File, caption?: string) {
     }
 
     // Insert record into database
-    const { error: dbError } = await supabase.from("images").insert({
-      user_id: user.id,
-      filename: originalFileName,
-      original_name: file.name,
-      file_size: file.size,
-      mime_type: file.type,
-      storage_path: originalFilePath,
-      thumbnail_url: thumbnailFilePath,
-      caption: caption || null,
-    });
+    const { data: insertedImage, error: dbError } = await supabase
+      .from("images")
+      .insert({
+        user_id: user.id,
+        filename: originalFileName,
+        original_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        storage_path: originalFilePath,
+        thumbnail_url: thumbnailFilePath,
+        caption: caption || null,
+        processing_status: "pending", // Set initial AI processing status
+      })
+      .select()
+      .single();
 
-    if (dbError) {
+    if (dbError || !insertedImage) {
       // Clean up uploaded files if database insert fails
       await supabase.storage
         .from("images")
         .remove([originalFilePath, thumbnailFilePath]);
       throw new Error(
-        `Failed to save "${file.name}" to database: ${dbError.message}`
+        `Failed to save "${file.name}" to database: ${dbError?.message}`
       );
     }
 
     console.log("Single upload successful for:", file.name);
-    return { success: true, filename: file.name };
+
+    // Trigger AI analysis in the background (non-blocking)
+    try {
+      // Get signed URL for AI analysis
+      const { data: signedUrlData } = await supabase.storage
+        .from("images")
+        .createSignedUrl(originalFilePath, 3600); // 1 hour expiry
+
+      if (signedUrlData?.signedUrl) {
+        console.log("Starting AI analysis for:", file.name);
+
+        // Update status to processing
+        await supabase
+          .from("images")
+          .update({ processing_status: "processing" })
+          .eq("id", insertedImage.id);
+
+        // Run AI analysis directly
+        const analysisResult = await analyzeImage(signedUrlData.signedUrl);
+
+        if (analysisResult.success) {
+          // Update database with AI analysis results
+          await supabase
+            .from("images")
+            .update({
+              tags: analysisResult.tags,
+              description: analysisResult.description,
+              dominant_colors: analysisResult.dominantColors,
+              processing_status: "completed",
+              ai_analysis_error: null,
+              analyzed_at: new Date().toISOString(),
+            })
+            .eq("id", insertedImage.id);
+
+          console.log("AI analysis completed for:", file.name);
+        } else {
+          // Update database with error status
+          await supabase
+            .from("images")
+            .update({
+              processing_status: "failed",
+              ai_analysis_error: analysisResult.error || "AI analysis failed",
+            })
+            .eq("id", insertedImage.id);
+
+          console.error(
+            "AI analysis failed for:",
+            file.name,
+            analysisResult.error
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error in AI analysis:", error);
+      // Update status to failed
+      try {
+        await supabase
+          .from("images")
+          .update({
+            processing_status: "failed",
+            ai_analysis_error:
+              error instanceof Error ? error.message : "Unknown error",
+          })
+          .eq("id", insertedImage.id);
+      } catch (updateError) {
+        console.error("Failed to update error status:", updateError);
+      }
+    }
+
+    return { success: true, filename: file.name, imageId: insertedImage.id };
   } catch (error) {
     console.error("Single upload error:", error);
     throw error;
