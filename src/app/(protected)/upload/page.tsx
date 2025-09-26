@@ -54,10 +54,25 @@ export default function UploadPage({
 
         // Start background upload
         console.log("Calling startBackgroundUpload...");
-        await startBackgroundUpload(dt.files, caption);
+        const result = await startBackgroundUpload(dt.files, caption);
         console.log("Background upload completed successfully");
 
-        // Show success message (removed unused fileCount variable)
+        // Show success message and handle removed files notification
+        if (result.removedFiles) {
+          const { count, names, acceptedCount, totalSize } =
+            result.removedFiles;
+          const removedList =
+            count > 3
+              ? `${names.slice(0, 3).join(", ")} and ${count - 3} more`
+              : names.join(", ");
+
+          alert(
+            `⚠️ Upload partially successful!\n\n` +
+              `✅ ${acceptedCount} image(s) uploaded successfully (${totalSize}MB total)\n` +
+              `❌ ${count} image(s) removed due to 4.5MB total size limit:\n${removedList}\n\n` +
+              `Tip: Select fewer or smaller images to upload all at once.`
+          );
+        }
 
         // Clear the form for new uploads
         setSelectedFiles(null);
@@ -265,7 +280,7 @@ export default function UploadPage({
                   : "Drag and drop your images here, or click to browse"}
               </p>
               <p className="text-xs text-foreground/40 mt-1">
-                Maximum file size: 4MB per image (auto-compressed if larger)
+                Maximum: 4MB per image, 4.5MB total (auto-compressed if larger)
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-6 py-3 font-medium hover:opacity-90 transition">

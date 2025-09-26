@@ -282,9 +282,12 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
       try {
         console.log("startBackgroundUpload called with", files.length, "files");
 
-        // Validate and compress files before uploading (4MB limit for Vercel)
-        const maxSize = 4 * 1024 * 1024; // 4MB for Vercel serverless functions
-        const compressedFiles: File[] = [];
+        // Validate and process files with total size limit (4.5MB total for Vercel)
+        const maxIndividualSize = 4 * 1024 * 1024; // 4MB per file
+        const maxTotalSize = 4.5 * 1024 * 1024; // 4.5MB total for all files
+        const processedFiles: File[] = [];
+        const removedFiles: string[] = [];
+        let currentTotalSize = 0;
 
         for (const file of Array.from(files)) {
           if (!file.type.startsWith("image/")) {
@@ -294,31 +297,78 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
           let processedFile = file;
 
           // If file is too large, compress it
-          if (file.size > maxSize) {
+          if (file.size > maxIndividualSize) {
             console.log(
               `Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(
                 2
               )}MB)`
             );
-            processedFile = await compressImage(file, maxSize);
+            processedFile = await compressImage(file, maxIndividualSize);
             console.log(
               `Compressed to ${(processedFile.size / 1024 / 1024).toFixed(2)}MB`
             );
           }
 
-          // Final check after compression
-          if (processedFile.size > maxSize) {
-            throw new Error(
-              `File "${file.name}" is too large even after compression. Please use a smaller image.`
+          // Check if file is still too large after compression
+          if (processedFile.size > maxIndividualSize) {
+            console.log(
+              `Skipping ${file.name} - too large even after compression`
             );
+            removedFiles.push(file.name);
+            continue;
           }
 
-          compressedFiles.push(processedFile);
+          // Check if adding this file would exceed total size limit
+          if (currentTotalSize + processedFile.size > maxTotalSize) {
+            console.log(
+              `Skipping ${file.name} - would exceed total size limit`
+            );
+            removedFiles.push(file.name);
+            continue;
+          }
+
+          // File is acceptable, add it to the list
+          processedFiles.push(processedFile);
+          currentTotalSize += processedFile.size;
+        }
+
+        // Check if we have any files left to upload
+        if (processedFiles.length === 0) {
+          throw new Error(
+            "No files could be processed. Please select smaller images."
+          );
+        }
+
+        // Notify user if some files were removed
+        if (removedFiles.length > 0) {
+          const totalSizeMB = (maxTotalSize / 1024 / 1024).toFixed(1);
+          const removedList =
+            removedFiles.length > 3
+              ? `${removedFiles.slice(0, 3).join(", ")} and ${
+                  removedFiles.length - 3
+                } more`
+              : removedFiles.join(", ");
+
+          console.warn(
+            `Removed ${removedFiles.length} file(s) due to size limits: ${removedList}`
+          );
+
+          // You might want to show this to the user via a toast or alert
+          // For now, we'll throw an informative error that includes the successful files
+          if (processedFiles.length > 0) {
+            console.info(
+              `Proceeding with ${processedFiles.length} file(s). Total size: ${(
+                currentTotalSize /
+                1024 /
+                1024
+              ).toFixed(2)}MB`
+            );
+          }
         }
 
         const formData = new FormData();
 
-        compressedFiles.forEach((file) => {
+        processedFiles.forEach((file) => {
           console.log("Adding file to FormData:", file.name, file.size);
           formData.append("files", file);
         });
@@ -365,7 +415,20 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
         // Refresh active uploads to show the new jobs
         await fetchActiveUploads();
 
-        return result;
+        // Return result with information about removed files
+        return {
+          ...result,
+          removedFiles:
+            removedFiles.length > 0
+              ? {
+                  count: removedFiles.length,
+                  names: removedFiles,
+                  reason: "Total size limit (4.5MB) exceeded",
+                  acceptedCount: processedFiles.length,
+                  totalSize: (currentTotalSize / 1024 / 1024).toFixed(2),
+                }
+              : null,
+        };
       } catch (error) {
         console.error("Failed to start background upload:", error);
         throw error;

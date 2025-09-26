@@ -3,7 +3,17 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { generateThumbnail, fileToBuffer } from "@/lib/image-processing";
 import { analyzeImage } from "@/lib/ai-analysis";
 
+// Add GET method for debugging
+export async function GET() {
+  return NextResponse.json({
+    message: "Upload background endpoint is working",
+    methods: ["POST"],
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(request: NextRequest) {
+  console.log("POST /api/upload-background called");
   try {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
@@ -115,10 +125,26 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Background upload error:", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      {
+        success: false,
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
+}
+
+// Add OPTIONS method for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
 }
 
 // Background upload processing function
