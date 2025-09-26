@@ -29,7 +29,7 @@ export default async function RootLayout({
     const supabase = getSupabaseServerClient();
     const { data } = await supabase.auth.getSession();
     isAuthed = Boolean(data.session);
-  } catch (_) {
+  } catch {
     isAuthed = false;
   }
 

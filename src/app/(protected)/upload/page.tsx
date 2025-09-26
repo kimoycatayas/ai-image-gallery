@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React, { useState, use } from "react";
 import { useDropzone } from "react-dropzone";
 import { uploadSingleImage } from "@/app/actions/upload";
@@ -24,48 +25,7 @@ export default function UploadPage({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatuses, setUploadStatuses] = useState<FileUploadStatus[]>([]);
 
-  function processFiles(files: FileList | null) {
-    setSelectedFiles(files);
-
-    // Create preview URLs and initial status for each file
-    if (files) {
-      const fileStatuses: FileUploadStatus[] = Array.from(files).map(
-        (file) => ({
-          file,
-          preview: URL.createObjectURL(file),
-          status: "pending" as const,
-        })
-      );
-      setUploadStatuses(fileStatuses);
-
-      // Auto-start upload after a brief delay to show previews
-      setTimeout(() => {
-        startUpload();
-      }, 500);
-    } else {
-      setUploadStatuses([]);
-    }
-  }
-
-  // React Dropzone configuration
-  const onDrop = React.useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      // Create a FileList-like object
-      const dt = new DataTransfer();
-      acceptedFiles.forEach((file) => dt.items.add(file));
-      processFiles(dt.files);
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp", ".bmp", ".svg"],
-    },
-    multiple: true,
-  });
-
-  async function startUpload() {
+  const startUpload = React.useCallback(async () => {
     if (!uploadStatuses.length || isUploading) return;
 
     setIsUploading(true);
@@ -132,7 +92,48 @@ export default function UploadPage({
     } finally {
       setIsUploading(false);
     }
-  }
+  }, [uploadStatuses, isUploading, router]);
+
+  const processFiles = React.useCallback((files: FileList | null) => {
+    setSelectedFiles(files);
+
+    // Create preview URLs and initial status for each file
+    if (files) {
+      const fileStatuses: FileUploadStatus[] = Array.from(files).map(
+        (file) => ({
+          file,
+          preview: URL.createObjectURL(file),
+          status: "pending" as const,
+        })
+      );
+      setUploadStatuses(fileStatuses);
+
+      // Auto-start upload after a brief delay to show previews
+      setTimeout(() => {
+        startUpload();
+      }, 500);
+    } else {
+      setUploadStatuses([]);
+    }
+  }, [startUpload]);
+
+  // React Dropzone configuration
+  const onDrop = React.useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      // Create a FileList-like object
+      const dt = new DataTransfer();
+      acceptedFiles.forEach((file) => dt.items.add(file));
+      processFiles(dt.files);
+    }
+  }, [processFiles]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp", ".bmp", ".svg"],
+    },
+    multiple: true,
+  });
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -238,10 +239,12 @@ export default function UploadPage({
                 {uploadStatuses.map((fileStatus, index) => (
                   <div key={index} className="relative">
                     <div className="aspect-square rounded-lg overflow-hidden bg-background/60 border border-white/10">
-                      <img
+                      <Image
                         src={fileStatus.preview}
                         alt={fileStatus.file.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="(max-width: 768px) 50vw, 200px"
+                        className="object-cover"
                       />
 
                       {/* Upload Status Overlay */}

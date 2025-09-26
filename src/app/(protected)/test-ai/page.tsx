@@ -7,7 +7,16 @@ export default function TestAIPage() {
   const [imageId, setImageId] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{
+    status: string;
+    imageId: string;
+    message?: string;
+    results?: {
+      tags: string[];
+      description: string;
+      dominantColors: string[];
+    };
+  } | null>(null);
   const [error, setError] = useState("");
 
   const analyzeImage = async () => {
@@ -115,7 +124,7 @@ export default function TestAIPage() {
                   Description
                 </h4>
                 <p className="text-sm text-foreground/70">
-                  {result.description}
+                  {result.results?.description || 'No description available'}
                 </p>
               </div>
 
@@ -124,7 +133,7 @@ export default function TestAIPage() {
                   Tags
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {result.tags.map((tag: string, index: number) => (
+                  {(result.results?.tags || []).map((tag: string, index: number) => (
                     <span
                       key={index}
                       className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded"
@@ -140,7 +149,7 @@ export default function TestAIPage() {
                   Dominant Colors
                 </h4>
                 <div className="flex gap-2">
-                  {result.dominantColors.map((color: string, index: number) => (
+                  {(result.results?.dominantColors || []).map((color: string, index: number) => (
                     <div key={index} className="flex items-center gap-2">
                       <div
                         className="w-6 h-6 rounded border border-white/20"
@@ -163,7 +172,7 @@ export default function TestAIPage() {
             <p>1. Go to your Supabase dashboard and find an image record</p>
             <p>2. Copy the image ID from the database</p>
             <p>3. Generate a signed URL for the image using Supabase Storage</p>
-            <p>4. Paste both values above and click "Analyze Image"</p>
+            <p>4. Paste both values above and click &quot;Analyze Image&quot;</p>
             <p>
               5. The AI will analyze the image and return tags, description, and
               colors

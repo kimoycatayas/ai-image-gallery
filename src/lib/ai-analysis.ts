@@ -82,13 +82,13 @@ export async function analyzeImage(
 
     // Clean and validate tags (ensure they're strings and reasonable length)
     const cleanTags = analysisResult.tags
-      .filter((tag: any) => typeof tag === "string" && tag.length > 0)
+      .filter((tag: unknown) => typeof tag === "string" && tag.length > 0)
       .slice(0, 10); // Limit to 10 tags max
 
     // Validate dominant colors (should be hex format)
     const cleanColors = analysisResult.dominantColors
       .filter(
-        (color: any) =>
+        (color: unknown) =>
           typeof color === "string" && /^#[0-9A-Fa-f]{6}$/.test(color)
       )
       .slice(0, 3); // Limit to 3 colors max

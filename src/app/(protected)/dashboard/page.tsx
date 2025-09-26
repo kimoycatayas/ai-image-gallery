@@ -7,7 +7,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import ImageModal from "@/components/ImageModal";
 import SearchBar, { SearchFilters } from "@/components/SearchBar";
 import { filterImages } from "@/lib/search-utils";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 interface ImageRecord {
   id: string;
@@ -75,7 +75,6 @@ async function getUserImages(): Promise<ImageRecord[]> {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [images, setImages] = useState<ImageRecord[]>([]);
   const [filteredImages, setFilteredImages] = useState<ImageRecord[]>([]);

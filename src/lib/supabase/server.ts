@@ -16,17 +16,17 @@ export function getSupabaseServerClient() {
       async get(name: string) {
         return (await cookies()).get(name)?.value;
       },
-      async set(name: string, value: string, options: any) {
+      async set(name: string, value: string, options: Record<string, unknown>) {
         try {
           (await cookies()).set({ name, value, ...options });
-        } catch (_) {
+        } catch {
           // noop: readonly cookies in some contexts (e.g., middleware) will throw
         }
       },
-      async remove(name: string, options: any) {
+      async remove(name: string, options: Record<string, unknown>) {
         try {
           (await cookies()).set({ name, value: "", ...options, maxAge: 0 });
-        } catch (_) {
+        } catch {
           // noop
         }
       },

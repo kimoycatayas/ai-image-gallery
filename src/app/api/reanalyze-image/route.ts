@@ -170,19 +170,20 @@ export async function POST(request: Request) {
     if (imageId) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      await supabase
+      const { error: dbError } = await supabase
         .from("images")
         .update({
           processing_status: "failed",
           ai_analysis_error: `Re-analysis error: ${errorMessage}`,
         })
-        .eq("id", imageId)
-        .catch((dbError) =>
-          console.error(
-            `Failed to update image ${imageId} status to failed:`,
-            dbError
-          )
+        .eq("id", imageId);
+      
+      if (dbError) {
+        console.error(
+          `Failed to update image ${imageId} status to failed:`,
+          dbError
         );
+      }
 
       // Revalidate dashboard to show failed status
       revalidatePath("/dashboard");

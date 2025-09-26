@@ -111,15 +111,18 @@ export async function POST(request: NextRequest) {
     const { imageId } = await request.json().catch(() => ({}));
     if (imageId) {
       const supabase = getSupabaseServerClient();
-      await supabase
+      const { error: updateError } = await supabase
         .from("images")
         .update({
           processing_status: "failed",
           ai_analysis_error:
             error instanceof Error ? error.message : "Unknown error",
         })
-        .eq("id", imageId)
-        .catch(console.error);
+        .eq("id", imageId);
+      
+      if (updateError) {
+        console.error("Failed to update error status:", updateError);
+      }
     }
 
     return NextResponse.json(
