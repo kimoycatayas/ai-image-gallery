@@ -18,8 +18,10 @@ export async function generateThumbnail(
 
   try {
     // Try to load sharp dynamically
-    const sharp = await import("sharp").then(m => m.default).catch(() => null);
-    
+    const sharp = await import("sharp")
+      .then((m) => m.default)
+      .catch(() => null);
+
     if (!sharp) {
       console.warn("Sharp not available, returning original buffer");
       return imageBuffer;
@@ -38,7 +40,10 @@ export async function generateThumbnail(
 
     return thumbnail;
   } catch (error) {
-    console.error("Error generating thumbnail, falling back to original:", error);
+    console.error(
+      "Error generating thumbnail, falling back to original:",
+      error
+    );
     // Fallback: return original buffer if thumbnail generation fails
     return imageBuffer;
   }
@@ -52,8 +57,10 @@ export async function generateThumbnail(
 export async function getImageMetadata(imageBuffer: Buffer) {
   try {
     // Try to load sharp dynamically
-    const sharp = await import("sharp").then(m => m.default).catch(() => null);
-    
+    const sharp = await import("sharp")
+      .then((m) => m.default)
+      .catch(() => null);
+
     if (!sharp) {
       console.warn("Sharp not available, returning basic metadata");
       return {
