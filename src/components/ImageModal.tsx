@@ -146,6 +146,18 @@ export default function ImageModal({
           text: "Analyzing with AI...",
           color: "text-blue-400",
         };
+      case "uploading":
+        return {
+          icon: "⬆️",
+          text: "Uploading file...",
+          color: "text-blue-400",
+        };
+      case "ai_processing":
+        return {
+          icon: "🧠",
+          text: "AI analyzing...",
+          color: "text-purple-400",
+        };
       case "completed":
         return {
           icon: "🟢",
@@ -157,6 +169,12 @@ export default function ImageModal({
           icon: "🔴",
           text: "AI analysis failed",
           color: "text-red-400",
+        };
+      default:
+        return {
+          icon: "⭕",
+          text: "Unknown status",
+          color: "text-gray-400",
         };
     }
   };

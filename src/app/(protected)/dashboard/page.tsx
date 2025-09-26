@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import ImageModal from "@/components/ImageModal";
 import SearchBar, { SearchFilters } from "@/components/SearchBar";
+import UploadProgress from "@/components/UploadProgress";
 import { filterImages } from "@/lib/search-utils";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useUploadStatus } from "@/hooks/useUploadStatus";
 
 interface ImageRecord {
   id: string;
@@ -17,7 +19,13 @@ interface ImageRecord {
   storage_path: string;
   thumbnail_url: string | null;
   created_at: string;
-  processing_status: "pending" | "processing" | "completed" | "failed";
+  processing_status:
+    | "uploading"
+    | "processing"
+    | "pending"
+    | "ai_processing"
+    | "completed"
+    | "failed";
   tags: string[] | null;
   description: string | null;
   dominant_colors: string[] | null;
@@ -90,6 +98,22 @@ export default function DashboardPage() {
     similarTo: null,
   });
 
+  // Function to refresh gallery images
+  const refreshGallery = useCallback(async () => {
+    try {
+      console.log("Refreshing gallery after all uploads completed");
+      const fetchedImages = await getUserImages();
+      setImages(fetchedImages);
+      setFilteredImages(fetchedImages);
+    } catch (error) {
+      console.error("Failed to refresh gallery:", error);
+    }
+  }, []);
+
+  // Use upload status hook for background uploads
+  const { activeUploads, refreshUploads, clearStuckUploads } =
+    useUploadStatus(refreshGallery);
+
   // Toast notification state
   const [toast, setToast] = useState<{
     message: string;
@@ -132,7 +156,7 @@ export default function DashboardPage() {
     }
   }, [toast]);
 
-  // Load images on component mount
+  // Load images on component mount and set up real-time updates
   useEffect(() => {
     const loadImages = async () => {
       try {
@@ -147,6 +171,59 @@ export default function DashboardPage() {
     };
 
     loadImages();
+
+    // Set up real-time subscription for gallery updates
+    const supabase = getSupabaseBrowserClient();
+    let subscription: any = null;
+
+    const setupGallerySubscription = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      subscription = supabase
+        .channel("gallery-updates")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "images",
+            filter: `user_id=eq.${user.id}`,
+          },
+          async (payload) => {
+            console.log("Gallery update received:", payload);
+
+            if (payload.eventType === "INSERT") {
+              // New image added - refresh the entire gallery to get signed URLs
+              await loadImages();
+            } else if (payload.eventType === "UPDATE") {
+              // Image updated - refresh to get latest data
+              await loadImages();
+            } else if (payload.eventType === "DELETE") {
+              // Image deleted - remove from gallery
+              const deletedId = payload.old?.id;
+              if (deletedId) {
+                setImages((prev) => prev.filter((img) => img.id !== deletedId));
+                setFilteredImages((prev) =>
+                  prev.filter((img) => img.id !== deletedId)
+                );
+              }
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupGallerySubscription();
+
+    return () => {
+      // Clean up subscription
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   // Apply search filters whenever filters or images change
@@ -294,6 +371,12 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Upload Progress */}
+      <UploadProgress
+        uploads={activeUploads}
+        onClearStuck={clearStuckUploads}
+      />
 
       {/* Search Bar */}
       <div className="mb-6">

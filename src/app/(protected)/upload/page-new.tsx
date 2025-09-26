@@ -21,79 +21,57 @@ export default function UploadPage({
 }) {
   const params = use(searchParams);
   const router = useRouter();
-  const [, setSelectedFiles] = useState<FileList | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatuses, setUploadStatuses] = useState<FileUploadStatus[]>([]);
   const { startBackgroundUpload } = useUploadStatus();
 
-  const startUpload = React.useCallback(
-    async (statusesToUpload?: FileUploadStatus[]) => {
-      const statuses = statusesToUpload || uploadStatuses;
-      console.log("startUpload called", {
-        uploadStatuses: uploadStatuses.length,
-        statusesToUpload: statusesToUpload?.length,
-        actualStatuses: statuses.length,
-        isUploading,
-      });
-      if (!statuses.length || isUploading) return;
+  const startUpload = React.useCallback(async () => {
+    if (!uploadStatuses.length || isUploading) return;
 
-      setIsUploading(true);
-      console.log("Starting upload process...");
+    setIsUploading(true);
 
-      try {
-        // Get caption from form if available
-        const captionInput = document.querySelector(
-          'input[name="caption"]'
-        ) as HTMLInputElement;
-        const caption = captionInput?.value || undefined;
+    try {
+      // Get caption from form if available
+      const captionInput = document.querySelector(
+        'input[name="caption"]'
+      ) as HTMLInputElement;
+      const caption = captionInput?.value || undefined;
 
-        // Create FileList from selected files
-        const dt = new DataTransfer();
-        statuses.forEach((status) => dt.items.add(status.file));
-        console.log("Created FileList with", dt.files.length, "files");
+      // Create FileList from selected files
+      const dt = new DataTransfer();
+      uploadStatuses.forEach((status) => dt.items.add(status.file));
 
-        // Start background upload
-        console.log("Calling startBackgroundUpload...");
-        await startBackgroundUpload(dt.files, caption);
-        console.log("Background upload completed successfully");
+      // Start background upload
+      await startBackgroundUpload(dt.files, caption);
 
-        // Show success message
-        const fileCount = statuses.length;
+      // Show success message and redirect to dashboard
+      const fileCount = uploadStatuses.length;
+      router.push(
+        `/dashboard?success=${encodeURIComponent(
+          `${fileCount} image${
+            fileCount > 1 ? "s" : ""
+          } are being uploaded in the background!`
+        )}`
+      );
+    } catch (error) {
+      console.error("Upload error:", error);
 
-        // Clear the form for new uploads
-        setSelectedFiles(null);
-        setUploadStatuses([]);
-
-        // Clear the caption input (reuse the existing captionInput variable)
-        if (captionInput) {
-          captionInput.value = "";
-        }
-      } catch (error) {
-        console.error("Upload error:", error);
-        alert(
-          `Upload failed: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
-
-        // Update all statuses to error
-        setUploadStatuses((prev) =>
-          prev.map((status) => ({
-            ...status,
-            status: "error",
-            error: error instanceof Error ? error.message : "Upload failed",
-          }))
-        );
-      } finally {
-        setIsUploading(false);
-      }
-    },
-    [isUploading, startBackgroundUpload, router]
-  ); // Removed uploadStatuses from deps to avoid stale closure
+      // Update all statuses to error
+      setUploadStatuses((prev) =>
+        prev.map((status) => ({
+          ...status,
+          status: "error",
+          error: error instanceof Error ? error.message : "Upload failed",
+        }))
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }, [uploadStatuses, isUploading, startBackgroundUpload, router]);
 
   const processFiles = React.useCallback(
     (files: FileList | null) => {
-      console.log("processFiles called with", files?.length, "files");
       setSelectedFiles(files);
 
       // Create preview URLs and initial status for each file
@@ -106,15 +84,10 @@ export default function UploadPage({
           })
         );
         setUploadStatuses(fileStatuses);
-        console.log("Set upload statuses:", fileStatuses.length);
 
         // Auto-start upload after a brief delay to show previews
-        console.log("Setting timeout to start upload in 500ms...");
         setTimeout(() => {
-          console.log(
-            "Timeout triggered, calling startUpload with statuses..."
-          );
-          startUpload(fileStatuses); // Pass the statuses directly to avoid stale closure
+          startUpload();
         }, 500);
       } else {
         setUploadStatuses([]);

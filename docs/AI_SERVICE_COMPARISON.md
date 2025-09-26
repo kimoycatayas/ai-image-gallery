@@ -242,3 +242,10 @@ const analysis = await analyzeImage(imageUrl);
 - Add processing status indicators
 
 This approach gives us the best balance of quality, ease of use, and development speed for our AI Image Gallery project.
+
+| Requirement                                  | Explanation (simple)                                                                                                                                                                                                                    |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Clear comparison of options**              | I compared **Azure AI Vision**, **Google Cloud Vision**, and **OpenAI GPT-4o Vision**. Azure and Google focus on basic tasks like tagging, OCR, and object detection. GPT-4o Vision can actually reason and explain what’s in an image. |
+| **Justified decision based on requirements** | If the project only needs **basic analysis at low cost**, Azure or Google is enough. If the project needs **smarter image understanding and reasoning**, GPT-4o Vision is the better choice even if it costs more.                      |
+| **Understanding of trade-offs**              | **Azure/Google:** cheaper and simpler, but limited to fixed features. **GPT-4o:** much smarter, but more expensive and less predictable in cost.                                                                                        |
+| **Cost awareness**                           | **Azure:** about 5,000 free images/month for 12 months. **Google:** 1,000 free units/month forever. **GPT-4o:** no free tier, pay per use (tokens + image processing).                                                                  |
