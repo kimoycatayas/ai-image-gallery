@@ -43,13 +43,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate file size (10MB limit for Vercel)
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      // Validate file size (4MB limit for Vercel serverless functions)
+      const maxSize = 4 * 1024 * 1024; // 4MB
       if (file.size > maxSize) {
         return NextResponse.json(
           {
             success: false,
-            error: `File "${file.name}" size must be less than 10MB`,
+            error: `File "${file.name}" size must be less than 4MB`,
           },
           { status: 400 }
         );

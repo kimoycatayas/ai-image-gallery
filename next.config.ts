@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb", // Allow up to 10MB for image uploads (Vercel limit)
+      bodySizeLimit: "4mb", // Allow up to 4MB for image uploads (Vercel serverless limit)
     },
   },
   images: {

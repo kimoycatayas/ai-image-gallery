@@ -265,7 +265,7 @@ export default function UploadPage({
                   : "Drag and drop your images here, or click to browse"}
               </p>
               <p className="text-xs text-foreground/40 mt-1">
-                Maximum file size: 10MB per image
+                Maximum file size: 4MB per image (auto-compressed if larger)
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-6 py-3 font-medium hover:opacity-90 transition">

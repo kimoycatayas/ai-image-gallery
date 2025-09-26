@@ -1,6 +1,69 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
+// Image compression utility
+async function compressImage(file: File, maxSizeBytes: number): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+
+    img.onload = () => {
+      // Calculate new dimensions to reduce file size
+      let { width, height } = img;
+      const maxDimension = 1920; // Max width or height
+
+      if (width > height && width > maxDimension) {
+        height = (height * maxDimension) / width;
+        width = maxDimension;
+      } else if (height > maxDimension) {
+        width = (width * maxDimension) / height;
+        height = maxDimension;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Draw and compress
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      // Start with high quality and reduce until file size is acceptable
+      let quality = 0.8;
+      const tryCompress = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error("Failed to compress image"));
+              return;
+            }
+
+            if (blob.size <= maxSizeBytes || quality <= 0.1) {
+              // Success or minimum quality reached
+              const compressedFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              // Try with lower quality
+              quality -= 0.1;
+              tryCompress();
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      tryCompress();
+    };
+
+    img.onerror = () =>
+      reject(new Error("Failed to load image for compression"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export interface UploadJob {
   id: string;
   filename: string;
@@ -219,22 +282,43 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
       try {
         console.log("startBackgroundUpload called with", files.length, "files");
 
-        // Validate file sizes before uploading (10MB limit for Vercel)
-        const maxSize = 10 * 1024 * 1024; // 10MB for Vercel deployment
+        // Validate and compress files before uploading (4MB limit for Vercel)
+        const maxSize = 4 * 1024 * 1024; // 4MB for Vercel serverless functions
+        const compressedFiles: File[] = [];
+
         for (const file of Array.from(files)) {
-          if (file.size > maxSize) {
-            throw new Error(
-              `File "${file.name}" is too large. Please reduce to under 10MB and try again.`
-            );
-          }
           if (!file.type.startsWith("image/")) {
             throw new Error(`File "${file.name}" must be an image.`);
           }
+
+          let processedFile = file;
+
+          // If file is too large, compress it
+          if (file.size > maxSize) {
+            console.log(
+              `Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(
+                2
+              )}MB)`
+            );
+            processedFile = await compressImage(file, maxSize);
+            console.log(
+              `Compressed to ${(processedFile.size / 1024 / 1024).toFixed(2)}MB`
+            );
+          }
+
+          // Final check after compression
+          if (processedFile.size > maxSize) {
+            throw new Error(
+              `File "${file.name}" is too large even after compression. Please use a smaller image.`
+            );
+          }
+
+          compressedFiles.push(processedFile);
         }
 
         const formData = new FormData();
 
-        Array.from(files).forEach((file) => {
+        compressedFiles.forEach((file) => {
           console.log("Adding file to FormData:", file.name, file.size);
           formData.append("files", file);
         });
