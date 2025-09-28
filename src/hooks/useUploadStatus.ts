@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createImageSignedUrls, debugSignedUrl } from "@/lib/storage-utils";
 
 // Image compression utility
 async function compressImage(file: File, maxSizeBytes: number): Promise<File> {
@@ -168,32 +169,21 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
           // Only get signed URLs if the file has been uploaded (progress >= 70)
           if (img.upload_progress && img.upload_progress >= 70) {
             try {
-              // Get original image signed URL
-              const { data: originalData, error: originalError } =
-                await supabase.storage
-                  .from("images")
-                  .createSignedUrl(img.storage_path, 3600);
-
-              if (!originalError && originalData?.signedUrl) {
-                signedUrl = originalData.signedUrl;
+              const thumbnailPath = img.thumbnail_url && img.processing_status === "completed" 
+                ? img.thumbnail_url 
+                : null;
+              
+              const { signedUrl: originalUrl, thumbnailSignedUrl: thumbUrl } = 
+                await createImageSignedUrls(img.storage_path, thumbnailPath, 3600);
+              
+              signedUrl = originalUrl;
+              thumbnailSignedUrl = thumbUrl;
+              
+              // Debug logging
+              if (signedUrl) {
+                debugSignedUrl(signedUrl, `upload-${img.id}`);
               }
-
-              // Only get thumbnail URL if we're in completed status (thumbnails should exist)
-              if (img.thumbnail_url && img.processing_status === "completed") {
-                const { data: thumbnailData, error: thumbnailError } =
-                  await supabase.storage
-                    .from("images")
-                    .createSignedUrl(img.thumbnail_url, 3600);
-
-                if (!thumbnailError && thumbnailData?.signedUrl) {
-                  thumbnailSignedUrl = thumbnailData.signedUrl;
-                } else {
-                  console.warn(
-                    `Thumbnail not found for ${img.id}, using original`
-                  );
-                  thumbnailSignedUrl = signedUrl; // Use original as fallback
-                }
-              }
+              
             } catch (error) {
               console.log(
                 "Error getting signed URLs for image:",

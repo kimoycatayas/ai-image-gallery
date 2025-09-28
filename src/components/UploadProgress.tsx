@@ -1,5 +1,5 @@
 import React from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import { UploadJob } from "@/hooks/useUploadStatus";
 
 interface UploadProgressProps {
@@ -151,12 +151,14 @@ export default function UploadProgress({
               {/* Thumbnail or placeholder */}
               <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/10 flex-shrink-0">
                 {upload.thumbnailSignedUrl ? (
-                  <Image
+                  <SafeImage
                     src={upload.thumbnailSignedUrl}
+                    fallbackSrc={upload.signedUrl || undefined}
                     alt={upload.original_name}
                     fill
                     className="object-cover"
                     sizes="48px"
+                    onError={(error) => console.warn(`Thumbnail load error for ${upload.id}:`, error)}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

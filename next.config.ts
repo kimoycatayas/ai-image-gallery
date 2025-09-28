@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/sign/**",
       },
     ],
+    // Ensure query parameters (like tokens) are preserved
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
   },
 };
 

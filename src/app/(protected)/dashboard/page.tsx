@@ -10,6 +10,7 @@ import UploadProgress from "@/components/UploadProgress";
 import { filterImages } from "@/lib/search-utils";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useUploadStatus } from "@/hooks/useUploadStatus";
+import { createImageSignedUrls, debugSignedUrl } from "@/lib/storage-utils";
 
 interface ImageRecord {
   id: string;
@@ -57,23 +58,23 @@ async function getUserImages(): Promise<ImageRecord[]> {
   // Generate signed URLs for each image (both original and thumbnail)
   const imagesWithUrls = await Promise.all(
     (images || []).map(async (img) => {
-      // Get signed URL for original image
-      const { data: originalData } = await supabase.storage
-        .from("images")
-        .createSignedUrl(img.storage_path, 3600); // 1 hour expiry
+      const { signedUrl, thumbnailSignedUrl } = await createImageSignedUrls(
+        img.storage_path,
+        img.thumbnail_url,
+        3600 // 1 hour expiry
+      );
 
-      // Get signed URL for thumbnail (if exists)
-      let thumbnailSignedUrl = null;
-      if (img.thumbnail_url) {
-        const { data: thumbnailData } = await supabase.storage
-          .from("images")
-          .createSignedUrl(img.thumbnail_url, 3600);
-        thumbnailSignedUrl = thumbnailData?.signedUrl || null;
+      // Debug logging in development
+      if (signedUrl) {
+        debugSignedUrl(signedUrl, `original-${img.id}`);
+      }
+      if (thumbnailSignedUrl) {
+        debugSignedUrl(thumbnailSignedUrl, `thumbnail-${img.id}`);
       }
 
       return {
         ...img,
-        signedUrl: originalData?.signedUrl || null,
+        signedUrl,
         thumbnailSignedUrl,
       };
     })
