@@ -4,14 +4,27 @@ import Link from "next/link";
 import Image from "next/image";
 import React, { useState, use } from "react";
 import { useDropzone } from "react-dropzone";
-// import { useRouter } from "next/navigation"; // Removed as not needed
+import { useRouter } from "next/navigation";
 import { useUploadStatus } from "@/hooks/useUploadStatus";
 
 interface FileUploadStatus {
   file: File;
   preview: string;
-  status: "pending" | "uploading" | "success" | "error";
+  status:
+    | "pending"
+    | "uploading"
+    | "processing"
+    | "ai_analyzing"
+    | "completed"
+    | "error"
+    | "removed";
   error?: string;
+  uploadId?: string;
+  progress?: number;
+  aiAnalysis?: {
+    description?: string | null;
+    tags?: string[] | null;
+  };
 }
 
 export default function UploadPage({
@@ -20,11 +33,87 @@ export default function UploadPage({
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
   const params = use(searchParams);
-  // const router = useRouter(); // Removed as not needed after removing redirect
+  const router = useRouter();
   const [, setSelectedFiles] = useState<FileList | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatuses, setUploadStatuses] = useState<FileUploadStatus[]>([]);
-  const { startBackgroundUpload } = useUploadStatus();
+  const [showCompletionSnackbar, setShowCompletionSnackbar] = useState(false);
+
+  // Handle upload completion callback
+  const handleAllUploadsComplete = React.useCallback(() => {
+    console.log("All uploads completed! Showing snackbar and redirecting...");
+    setShowCompletionSnackbar(true);
+
+    // Redirect to homepage after 3 seconds
+    setTimeout(() => {
+      router.push("/dashboard");
+    }, 3000);
+  }, [router]);
+
+  const { startBackgroundUpload, activeUploads } = useUploadStatus(
+    handleAllUploadsComplete
+  );
+
+  // Update upload statuses based on active uploads
+  React.useEffect(() => {
+    if (activeUploads.length > 0) {
+      setUploadStatuses((prev) =>
+        prev.map((status) => {
+          const activeUpload = activeUploads.find(
+            (upload) => upload.original_name === status.file.name
+          );
+
+          if (activeUpload) {
+            const mappedStatus =
+              activeUpload.processing_status === "uploading"
+                ? "uploading"
+                : activeUpload.processing_status === "processing"
+                ? "processing"
+                : activeUpload.processing_status === "pending"
+                ? "processing"
+                : activeUpload.processing_status === "ai_processing"
+                ? "ai_analyzing"
+                : activeUpload.processing_status === "completed"
+                ? "completed"
+                : activeUpload.processing_status === "failed"
+                ? "error"
+                : status.status;
+
+            return {
+              ...status,
+              uploadId: activeUpload.id,
+              progress:
+                mappedStatus === "completed"
+                  ? 100
+                  : activeUpload.upload_progress || 0,
+              status: mappedStatus,
+              error:
+                activeUpload.processing_status === "failed"
+                  ? activeUpload.ai_analysis_error || "Upload failed"
+                  : undefined,
+              aiAnalysis:
+                activeUpload.processing_status === "completed"
+                  ? {
+                      description: activeUpload.description,
+                      tags: activeUpload.tags,
+                    }
+                  : undefined,
+            };
+          }
+
+          // If status is completed but no activeUpload found, ensure 100% progress
+          if (status.status === "completed" && !status.progress) {
+            return {
+              ...status,
+              progress: 100,
+            };
+          }
+
+          return status;
+        })
+      );
+    }
+  }, [activeUploads]);
 
   const startUpload = React.useCallback(
     async (statusesToUpload?: FileUploadStatus[]) => {
@@ -57,26 +146,63 @@ export default function UploadPage({
         const result = await startBackgroundUpload(dt.files, caption);
         console.log("Background upload completed successfully");
 
-        // Show success message and handle removed files notification
-        if (result.removedFiles) {
-          const { count, names, acceptedCount, totalSize } =
-            result.removedFiles;
-          const removedList =
-            count > 3
-              ? `${names.slice(0, 3).join(", ")} and ${count - 3} more`
-              : names.join(", ");
+        // Handle upload results and errors
+        if (
+          result.errors &&
+          Array.isArray(result.errors) &&
+          result.errors.length > 0
+        ) {
+          // Mark failed files in the UI
+          setUploadStatuses((prev) =>
+            prev.map((status) => {
+              const error = result.errors?.find(
+                (e) => e.fileName === status.file.name
+              );
+              if (error) {
+                return {
+                  ...status,
+                  status: "error" as const,
+                  error: error.error,
+                };
+              }
+              return status;
+            })
+          );
 
-          alert(
-            `⚠️ Upload partially successful!\n\n` +
-              `✅ ${acceptedCount} image(s) uploaded successfully (${totalSize}MB total)\n` +
-              `❌ ${count} image(s) removed due to 4.5MB total size limit:\n${removedList}\n\n` +
-              `Tip: Select fewer or smaller images to upload all at once.`
+          const errorCount = result.errors.length;
+          const successCount = result.results.length;
+          const errorList =
+            errorCount > 3
+              ? `${result.errors
+                  .slice(0, 3)
+                  .map((e) => e.fileName)
+                  .join(", ")} and ${errorCount - 3} more`
+              : result.errors.map((e) => e.fileName).join(", ");
+
+          if (successCount > 0) {
+            alert(
+              `⚠️ Upload partially successful!\n\n` +
+                `✅ ${successCount} image(s) started uploading successfully\n` +
+                `❌ ${errorCount} image(s) failed to start:\n${errorList}\n\n` +
+                `Check the status of each image below.`
+            );
+          } else {
+            alert(
+              `❌ Upload failed!\n\n` +
+                `All ${errorCount} image(s) failed to start uploading:\n${errorList}\n\n` +
+                `Please check file sizes and try again.`
+            );
+          }
+        } else {
+          // All uploads started successfully
+          console.log(
+            `All ${result.results.length} uploads started successfully`
           );
         }
 
-        // Clear the form for new uploads
+        // Don't clear statuses immediately - let user see the progress
         setSelectedFiles(null);
-        setUploadStatuses([]);
+        // setUploadStatuses([]); // Keep statuses to show upload progress
 
         // Clear the caption input (reuse the existing captionInput variable)
         if (captionInput) {
@@ -171,53 +297,6 @@ export default function UploadPage({
     });
   };
 
-  const getStatusIcon = (status: FileUploadStatus["status"]) => {
-    switch (status) {
-      case "pending":
-        return (
-          <div className="w-5 h-5 rounded-full border-2 border-foreground/30 flex items-center justify-center">
-            <div className="w-2 h-2 rounded-full bg-foreground/30" />
-          </div>
-        );
-      case "uploading":
-        return (
-          <div className="w-5 h-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
-        );
-      case "success":
-        return (
-          <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-            <svg
-              className="w-3 h-3 text-white"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-        );
-      case "error":
-        return (
-          <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-            <svg
-              className="w-3 h-3 text-white"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </div>
-        );
-    }
-  };
-
   return (
     <main className="min-h-screen p-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-8">
@@ -280,7 +359,7 @@ export default function UploadPage({
                   : "Drag and drop your images here, or click to browse"}
               </p>
               <p className="text-xs text-foreground/40 mt-1">
-                Maximum: 4MB per image, 4.5MB total (auto-compressed if larger)
+                Maximum: 4MB per image (auto-compressed if larger)
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-6 py-3 font-medium hover:opacity-90 transition">
@@ -320,9 +399,18 @@ export default function UploadPage({
         </div>
 
         {/* File Previews */}
-        {uploadStatuses.length > 0 && (
+        {uploadStatuses.length > 0 && !showCompletionSnackbar && (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Selected Images</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Selected Images</h3>
+              <button
+                type="button"
+                onClick={() => setUploadStatuses([])}
+                className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-foreground/80 hover:text-foreground transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
             <div className="grid gap-4">
               {uploadStatuses.map((fileStatus, index) => (
                 <div
@@ -339,40 +427,209 @@ export default function UploadPage({
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {fileStatus.file.name}
-                    </p>
-                    <p className="text-xs text-foreground/60">
-                      {(fileStatus.file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm font-medium truncate">
+                        {fileStatus.file.name}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {/* Status Icon */}
+                        {fileStatus.status === "pending" && (
+                          <div className="w-4 h-4 rounded-full bg-gray-500 flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-white"></div>
+                          </div>
+                        )}
+                        {fileStatus.status === "uploading" && (
+                          <div className="w-4 h-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600"></div>
+                        )}
+                        {fileStatus.status === "processing" && (
+                          <div className="w-4 h-4 animate-spin rounded-full border-2 border-yellow-300 border-t-yellow-600"></div>
+                        )}
+                        {fileStatus.status === "ai_analyzing" && (
+                          <div className="relative w-4 h-4">
+                            <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></div>
+                            <div className="relative inline-flex rounded-full w-4 h-4 bg-purple-500"></div>
+                          </div>
+                        )}
+                        {fileStatus.status === "completed" && (
+                          <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                        {fileStatus.status === "error" && (
+                          <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                        {fileStatus.status === "removed" && (
+                          <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center">
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </div>
+                        )}
+
+                        {/* Status Text */}
+                        <span
+                          className={`text-xs font-medium ${
+                            fileStatus.status === "pending"
+                              ? "text-gray-400"
+                              : fileStatus.status === "uploading"
+                              ? "text-blue-400"
+                              : fileStatus.status === "processing"
+                              ? "text-yellow-400"
+                              : fileStatus.status === "ai_analyzing"
+                              ? "text-purple-400"
+                              : fileStatus.status === "completed"
+                              ? "text-green-400"
+                              : fileStatus.status === "error"
+                              ? "text-red-400"
+                              : fileStatus.status === "removed"
+                              ? "text-orange-400"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          {fileStatus.status === "pending"
+                            ? "Ready"
+                            : fileStatus.status === "uploading"
+                            ? "Uploading..."
+                            : fileStatus.status === "processing"
+                            ? "Processing..."
+                            : fileStatus.status === "ai_analyzing"
+                            ? "AI Analyzing..."
+                            : fileStatus.status === "completed"
+                            ? "Complete"
+                            : fileStatus.status === "error"
+                            ? "Failed"
+                            : fileStatus.status === "removed"
+                            ? "Removed"
+                            : "Unknown"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    {(fileStatus.status === "uploading" ||
+                      fileStatus.status === "processing" ||
+                      fileStatus.status === "ai_analyzing") && (
+                      <div className="w-full bg-white/10 rounded-full h-1.5 mb-2">
+                        <div
+                          className={`h-1.5 rounded-full transition-all duration-300 ${
+                            fileStatus.status === "uploading"
+                              ? "bg-blue-500"
+                              : fileStatus.status === "processing"
+                              ? "bg-yellow-500"
+                              : "bg-purple-500"
+                          }`}
+                          style={{ width: `${fileStatus.progress || 0}%` }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-foreground/60">
+                        {(fileStatus.file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                      {(fileStatus.progress ||
+                        fileStatus.status === "completed") && (
+                        <p className="text-xs text-foreground/60">
+                          {fileStatus.status === "completed"
+                            ? "100"
+                            : fileStatus.progress || 0}
+                          %
+                        </p>
+                      )}
+                    </div>
+
                     {fileStatus.error && (
                       <p className="text-xs text-red-400 mt-1">
                         {fileStatus.error}
                       </p>
                     )}
+
+                    {fileStatus.aiAnalysis &&
+                      fileStatus.status === "completed" && (
+                        <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded text-xs">
+                          <p className="text-green-400 font-medium">
+                            AI Analysis Complete
+                          </p>
+                          {fileStatus.aiAnalysis.description && (
+                            <p className="text-green-300 mt-1">
+                              {fileStatus.aiAnalysis.description}
+                            </p>
+                          )}
+                          {fileStatus.aiAnalysis.tags &&
+                            fileStatus.aiAnalysis.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {fileStatus.aiAnalysis.tags
+                                  .slice(0, 3)
+                                  .map((tag, i) => (
+                                    <span
+                                      key={i}
+                                      className="px-1.5 py-0.5 bg-green-600/20 text-green-300 rounded text-xs"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                {fileStatus.aiAnalysis.tags.length > 3 && (
+                                  <span className="text-green-400 text-xs">
+                                    +{fileStatus.aiAnalysis.tags.length - 3}{" "}
+                                    more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(fileStatus.status)}
-                    {fileStatus.status === "pending" && !isUploading && (
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        className="text-red-400 hover:text-red-300 p-1"
+                  {/* Remove button */}
+                  {fileStatus.status === "pending" && !isUploading && (
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                      title="Remove image"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+                        <path
+                          fillRule="evenodd"
+                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -402,6 +659,66 @@ export default function UploadPage({
           </div>
         )}
       </form>
+
+      {/* Completion Snackbar */}
+      {showCompletionSnackbar && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md">
+          <div
+            className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg border border-green-500 cursor-pointer hover:bg-green-700 transition-colors"
+            onClick={() => router.push("/dashboard")}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0">
+                <svg
+                  className="w-6 h-6 text-green-200"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-green-100">
+                  🎉 All uploads completed!
+                </p>
+                <p className="text-sm text-green-200 mt-1">
+                  Your images have been successfully uploaded and analyzed.
+                  Redirecting to gallery...
+                </p>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowCompletionSnackbar(false);
+                }}
+                className="flex-shrink-0 text-green-200 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="mt-3 bg-green-700 rounded-full h-1 overflow-hidden">
+              <div
+                className="bg-green-300 h-full transition-all duration-[3000ms] ease-linear"
+                style={{ width: showCompletionSnackbar ? "100%" : "0%" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

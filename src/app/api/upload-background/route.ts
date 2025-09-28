@@ -16,12 +16,12 @@ export async function POST(request: NextRequest) {
   console.log("POST /api/upload-background called");
   try {
     const formData = await request.formData();
-    const files = formData.getAll("files") as File[];
+    const file = formData.get("file") as File;
     const caption = formData.get("caption") as string;
 
-    if (!files || files.length === 0) {
+    if (!file) {
       return NextResponse.json(
-        { success: false, error: "No files provided" },
+        { success: false, error: "No file provided" },
         { status: 400 }
       );
     }
@@ -41,86 +41,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uploadJobs = [];
-
-    // Create upload jobs for each file
-    for (const file of files) {
-      // Validate file type
-      if (!file.type.startsWith("image/")) {
-        return NextResponse.json(
-          { success: false, error: `File "${file.name}" must be an image` },
-          { status: 400 }
-        );
-      }
-
-      // Validate file size (4MB limit for Vercel serverless functions)
-      const maxSize = 4 * 1024 * 1024; // 4MB
-      if (file.size > maxSize) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `File "${file.name}" size must be less than 4MB`,
-          },
-          { status: 400 }
-        );
-      }
-
-      // Generate unique filename
-      const fileExt = file.name.split(".").pop();
-      const baseFileName = `${Date.now()}-${Math.random()
-        .toString(36)
-        .substring(2)}`;
-      const originalFileName = `${baseFileName}.${fileExt}`;
-      const thumbnailFileName = `${baseFileName}_thumb.jpg`;
-
-      const originalFilePath = `${user.id}/${originalFileName}`;
-      const thumbnailFilePath = `${user.id}/thumbnails/${thumbnailFileName}`;
-
-      // Create initial database record with 'uploading' status
-      const { data: imageRecord, error: dbError } = await supabase
-        .from("images")
-        .insert({
-          user_id: user.id,
-          filename: originalFileName,
-          original_name: file.name,
-          file_size: file.size,
-          mime_type: file.type,
-          storage_path: originalFilePath,
-          thumbnail_url: thumbnailFilePath,
-          caption: caption || null,
-          processing_status: "uploading", // New status for background uploads
-          upload_progress: 0,
-        })
-        .select()
-        .single();
-
-      if (dbError || !imageRecord) {
-        console.error("Failed to create image record:", dbError);
-        continue; // Skip this file and continue with others
-      }
-
-      uploadJobs.push({
-        imageId: imageRecord.id,
-        file: file,
-        originalFilePath,
-        thumbnailFilePath,
-        originalFileName,
-      });
-
-      // Start background upload process for this file
-      processUploadInBackground(
-        imageRecord.id,
-        file,
-        originalFilePath,
-        thumbnailFilePath,
-        user.id
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      return NextResponse.json(
+        { success: false, error: `File "${file.name}" must be an image` },
+        { status: 400 }
       );
     }
 
+    // Validate file size (4MB limit for Vercel serverless functions)
+    const maxSize = 4 * 1024 * 1024; // 4MB
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `File "${file.name}" size must be less than 4MB`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Generate unique filename
+    const fileExt = file.name.split(".").pop();
+    const baseFileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2)}`;
+    const originalFileName = `${baseFileName}.${fileExt}`;
+    const thumbnailFileName = `${baseFileName}_thumb.jpg`;
+
+    const originalFilePath = `${user.id}/${originalFileName}`;
+    const thumbnailFilePath = `${user.id}/thumbnails/${thumbnailFileName}`;
+
+    // Create initial database record with 'uploading' status
+    const { data: imageRecord, error: dbError } = await supabase
+      .from("images")
+      .insert({
+        user_id: user.id,
+        filename: originalFileName,
+        original_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        storage_path: originalFilePath,
+        thumbnail_url: thumbnailFilePath,
+        caption: caption || null,
+        processing_status: "uploading", // New status for background uploads
+        upload_progress: 0,
+      })
+      .select()
+      .single();
+
+    if (dbError || !imageRecord) {
+      console.error("Failed to create image record:", dbError);
+      return NextResponse.json(
+        { success: false, error: "Failed to create image record" },
+        { status: 500 }
+      );
+    }
+
+    // Start background upload process for this file
+    processUploadInBackground(
+      imageRecord.id,
+      file,
+      originalFilePath,
+      thumbnailFilePath,
+      user.id
+    );
+
     return NextResponse.json({
       success: true,
-      message: `Started background upload for ${uploadJobs.length} file(s)`,
-      jobIds: uploadJobs.map((job) => job.imageId),
+      message: "Started background upload",
+      imageId: imageRecord.id,
+      filename: file.name,
     });
   } catch (error) {
     console.error("Background upload error:", error);
@@ -215,11 +206,16 @@ async function processUploadInBackground(
       });
 
     if (thumbnailUploadError) {
-      // Clean up original file if thumbnail upload fails
-      await supabase.storage.from("images").remove([originalFilePath]);
-      throw new Error(
-        `Failed to upload thumbnail: ${thumbnailUploadError.message}`
+      console.warn(
+        `Thumbnail upload failed for ${file.name}:`,
+        thumbnailUploadError.message
       );
+      // Don't fail the entire upload, just proceed without thumbnail
+      // Update the database to clear the thumbnail_url since it doesn't exist
+      await supabase
+        .from("images")
+        .update({ thumbnail_url: null })
+        .eq("id", imageId);
     }
 
     // Update status to 'pending' for AI analysis

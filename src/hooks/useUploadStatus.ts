@@ -80,6 +80,24 @@ export interface UploadJob {
   created_at: string;
   signedUrl?: string | null;
   thumbnailSignedUrl?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  dominant_colors?: string[] | null;
+}
+
+// API response interface for single upload
+interface UploadResponse {
+  success: boolean;
+  message: string;
+  imageId: string;
+  filename: string;
+  originalFileName: string;
+}
+
+// Error interface for failed uploads
+interface UploadError {
+  fileName: string;
+  error: string;
 }
 
 export function useUploadStatus(onAllUploadsComplete?: () => void) {
@@ -110,6 +128,32 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
         ])
         .order("created_at", { ascending: false });
 
+      // Auto-fail uploads that have been stuck for more than 5 minutes
+      if (images && images.length > 0) {
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const stuckImages = images.filter((img) => {
+          const createdAt = new Date(img.created_at);
+          return createdAt < fiveMinutesAgo;
+        });
+
+        if (stuckImages.length > 0) {
+          console.log(
+            `Auto-failing ${stuckImages.length} stuck uploads older than 5 minutes`
+          );
+          await supabase
+            .from("images")
+            .update({
+              processing_status: "failed",
+              ai_analysis_error: "Upload timed out after 5 minutes",
+              upload_progress: 0,
+            })
+            .in(
+              "id",
+              stuckImages.map((img) => img.id)
+            );
+        }
+      }
+
       if (error) {
         console.error("Error fetching active uploads:", error);
         return;
@@ -121,9 +165,10 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
           let signedUrl = null;
           let thumbnailSignedUrl = null;
 
-          // Only get signed URLs if the file has been uploaded (progress > 0)
-          if (img.upload_progress && img.upload_progress > 0) {
+          // Only get signed URLs if the file has been uploaded (progress >= 70)
+          if (img.upload_progress && img.upload_progress >= 70) {
             try {
+              // Get original image signed URL
               const { data: originalData, error: originalError } =
                 await supabase.storage
                   .from("images")
@@ -133,7 +178,8 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
                 signedUrl = originalData.signedUrl;
               }
 
-              if (img.thumbnail_url) {
+              // Only get thumbnail URL if we're in completed status (thumbnails should exist)
+              if (img.thumbnail_url && img.processing_status === "completed") {
                 const { data: thumbnailData, error: thumbnailError } =
                   await supabase.storage
                     .from("images")
@@ -141,12 +187,18 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
 
                 if (!thumbnailError && thumbnailData?.signedUrl) {
                   thumbnailSignedUrl = thumbnailData.signedUrl;
+                } else {
+                  console.warn(
+                    `Thumbnail not found for ${img.id}, using original`
+                  );
+                  thumbnailSignedUrl = signedUrl; // Use original as fallback
                 }
               }
-            } catch {
+            } catch (error) {
               console.log(
-                "Skipping signed URLs for image still uploading:",
-                img.id
+                "Error getting signed URLs for image:",
+                img.id,
+                error
               );
             }
           }
@@ -237,7 +289,7 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
                 return prev;
               });
 
-              // Remove from active uploads if completed or failed
+              // Remove from active uploads if completed or failed (with longer delay)
               if (
                 ["completed", "failed"].includes(updatedImage.processing_status)
               ) {
@@ -256,7 +308,7 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
                     );
                     return filtered;
                   });
-                }, 2000); // Reduced to 2 seconds for faster feedback
+                }, 5000); // Increased to 5 seconds to ensure UI gets final update
               }
             }
           }
@@ -276,167 +328,116 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
     };
   }, [supabase, fetchActiveUploads]);
 
-  // Start background upload
-  const startBackgroundUpload = useCallback(
-    async (files: FileList, caption?: string) => {
+  // Start background upload for single file
+  const startSingleUpload = useCallback(
+    async (file: File, caption?: string) => {
+      const maxIndividualSize = 4 * 1024 * 1024; // 4MB per file
+
+      let processedFile = file;
+
+      // If file is too large, compress it
+      if (file.size > maxIndividualSize) {
+        console.log(
+          `Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`
+        );
+        processedFile = await compressImage(file, maxIndividualSize);
+        console.log(
+          `Compressed to ${(processedFile.size / 1024 / 1024).toFixed(2)}MB`
+        );
+      }
+
+      // Check if file is still too large after compression
+      if (processedFile.size > maxIndividualSize) {
+        throw new Error(
+          `File "${file.name}" is too large even after compression. Please use a smaller image.`
+        );
+      }
+
+      const formData = new FormData();
+      formData.append("file", processedFile);
+      if (caption) {
+        formData.append("caption", caption);
+      }
+
+      console.log(`Making fetch request for ${file.name}...`);
+      const response = await fetch("/api/upload-background", {
+        method: "POST",
+        body: formData,
+      });
+
+      // Handle 413 Content Too Large error specifically
+      if (response.status === 413) {
+        throw new Error(
+          "File size too large. Please reduce image size and try again."
+        );
+      }
+
+      let result;
       try {
-        console.log("startBackgroundUpload called with", files.length, "files");
-
-        // Validate and process files with total size limit (4.5MB total for Vercel)
-        const maxIndividualSize = 4 * 1024 * 1024; // 4MB per file
-        const maxTotalSize = 4.5 * 1024 * 1024; // 4.5MB total for all files
-        const processedFiles: File[] = [];
-        const removedFiles: string[] = [];
-        let currentTotalSize = 0;
-
-        for (const file of Array.from(files)) {
-          if (!file.type.startsWith("image/")) {
-            throw new Error(`File "${file.name}" must be an image.`);
-          }
-
-          let processedFile = file;
-
-          // If file is too large, compress it
-          if (file.size > maxIndividualSize) {
-            console.log(
-              `Compressing ${file.name} (${(file.size / 1024 / 1024).toFixed(
-                2
-              )}MB)`
-            );
-            processedFile = await compressImage(file, maxIndividualSize);
-            console.log(
-              `Compressed to ${(processedFile.size / 1024 / 1024).toFixed(2)}MB`
-            );
-          }
-
-          // Check if file is still too large after compression
-          if (processedFile.size > maxIndividualSize) {
-            console.log(
-              `Skipping ${file.name} - too large even after compression`
-            );
-            removedFiles.push(file.name);
-            continue;
-          }
-
-          // Check if adding this file would exceed total size limit
-          if (currentTotalSize + processedFile.size > maxTotalSize) {
-            console.log(
-              `Skipping ${file.name} - would exceed total size limit`
-            );
-            removedFiles.push(file.name);
-            continue;
-          }
-
-          // File is acceptable, add it to the list
-          processedFiles.push(processedFile);
-          currentTotalSize += processedFile.size;
-        }
-
-        // Check if we have any files left to upload
-        if (processedFiles.length === 0) {
-          throw new Error(
-            "No files could be processed. Please select smaller images."
-          );
-        }
-
-        // Notify user if some files were removed
-        if (removedFiles.length > 0) {
-          const totalSizeMB = (maxTotalSize / 1024 / 1024).toFixed(1);
-          const removedList =
-            removedFiles.length > 3
-              ? `${removedFiles.slice(0, 3).join(", ")} and ${
-                  removedFiles.length - 3
-                } more`
-              : removedFiles.join(", ");
-
-          console.warn(
-            `Removed ${removedFiles.length} file(s) due to size limits: ${removedList}`
-          );
-
-          // You might want to show this to the user via a toast or alert
-          // For now, we'll throw an informative error that includes the successful files
-          if (processedFiles.length > 0) {
-            console.info(
-              `Proceeding with ${processedFiles.length} file(s). Total size: ${(
-                currentTotalSize /
-                1024 /
-                1024
-              ).toFixed(2)}MB`
-            );
-          }
-        }
-
-        const formData = new FormData();
-
-        processedFiles.forEach((file) => {
-          console.log("Adding file to FormData:", file.name, file.size);
-          formData.append("files", file);
-        });
-
-        if (caption) {
-          formData.append("caption", caption);
-          console.log("Added caption:", caption);
-        }
-
-        console.log("Making fetch request to /api/upload-background...");
-        const response = await fetch("/api/upload-background", {
-          method: "POST",
-          body: formData,
-        });
-
-        console.log("Response status:", response.status);
-
-        // Handle 413 Content Too Large error specifically
+        result = await response.json();
+      } catch {
         if (response.status === 413) {
           throw new Error(
             "File size too large. Please reduce image size and try again."
           );
         }
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
 
-        let result;
-        try {
-          result = await response.json();
-        } catch (jsonError) {
-          // Handle case where response is not JSON (like 413 errors)
-          if (response.status === 413) {
-            throw new Error(
-              "File size too large. Please reduce image size and try again."
-            );
-          }
-          throw new Error(`Upload failed with status ${response.status}`);
-        }
+      if (!result.success) {
+        throw new Error(result.error || "Upload failed");
+      }
 
-        console.log("Response result:", result);
+      return {
+        ...result,
+        originalFileName: file.name,
+      };
+    },
+    []
+  );
 
-        if (!result.success) {
-          throw new Error(result.error || "Upload failed");
-        }
+  // Start background upload for multiple files
+  const startBackgroundUpload = useCallback(
+    async (files: FileList, caption?: string) => {
+      try {
+        console.log("startBackgroundUpload called with", files.length, "files");
+
+        const fileArray = Array.from(files);
+        const results: UploadResponse[] = [];
+        const errors: UploadError[] = [];
+
+        // Process each file individually with async requests
+        await Promise.allSettled(
+          fileArray.map(async (file) => {
+            try {
+              const result = await startSingleUpload(file, caption);
+              results.push(result);
+              console.log(`Successfully started upload for ${file.name}`);
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : "Upload failed";
+              errors.push({ fileName: file.name, error: errorMessage });
+              console.error(`Failed to start upload for ${file.name}:`, error);
+            }
+          })
+        );
 
         // Refresh active uploads to show the new jobs
         await fetchActiveUploads();
 
-        // Return result with information about removed files
         return {
-          ...result,
-          removedFiles:
-            removedFiles.length > 0
-              ? {
-                  count: removedFiles.length,
-                  names: removedFiles,
-                  reason: "Total size limit (4.5MB) exceeded",
-                  acceptedCount: processedFiles.length,
-                  totalSize: (currentTotalSize / 1024 / 1024).toFixed(2),
-                }
-              : null,
+          success: true,
+          message: `Started ${results.length} upload(s)`,
+          results,
+          errors: errors.length > 0 ? errors : undefined,
         };
       } catch (error) {
-        console.error("Failed to start background upload:", error);
+        console.error("Failed to start background uploads:", error);
         throw error;
       }
     },
-    [fetchActiveUploads]
+    [startSingleUpload, fetchActiveUploads]
   );
-
   // Get upload status summary
   const getUploadSummary = useCallback(() => {
     const total = activeUploads.length;
@@ -475,46 +476,50 @@ export function useUploadStatus(onAllUploadsComplete?: () => void) {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get all images to check their actual status
-      const { data: allImages } = await supabase
-        .from("images")
-        .select("id, processing_status")
-        .eq("user_id", user.id);
+      console.log("Clearing stuck uploads...");
 
-      if (allImages) {
-        // Remove any uploads from activeUploads that are actually completed/failed in the database
-        setActiveUploads((prev) => {
-          return prev.filter((upload) => {
-            const dbImage = allImages.find((img) => img.id === upload.id);
-            if (
-              dbImage &&
-              ["completed", "failed"].includes(dbImage.processing_status)
-            ) {
-              console.log(
-                "Clearing stuck upload:",
-                upload.id,
-                "actual status:",
-                dbImage.processing_status
-              );
-              return false; // Remove from active uploads
-            }
-            return true; // Keep in active uploads
-          });
-        });
+      // Mark all stuck uploads as failed in the database
+      const { error: updateError } = await supabase
+        .from("images")
+        .update({
+          processing_status: "failed",
+          ai_analysis_error: "Upload cancelled by user",
+          upload_progress: 0,
+        })
+        .eq("user_id", user.id)
+        .in("processing_status", [
+          "uploading",
+          "processing",
+          "pending",
+          "ai_processing",
+        ]);
+
+      if (updateError) {
+        console.error("Error updating stuck uploads:", updateError);
+      } else {
+        console.log("Successfully marked stuck uploads as failed");
       }
+
+      // Clear all active uploads from the UI
+      setActiveUploads([]);
+
+      // Refresh the upload list
+      await fetchActiveUploads();
+
+      console.log("Stuck uploads cleared successfully");
     } catch (error) {
       console.error("Failed to clear stuck uploads:", error);
     }
-  }, [supabase]);
+  }, [supabase, fetchActiveUploads]);
 
-  // Auto-clear stuck uploads on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      clearStuckUploads();
-    }, 3000); // Wait 3 seconds after mount for data to settle
+  // Auto-clear stuck uploads on mount (disabled - let user manually clear)
+  // useEffect(() => {
+  //   const timer = setTimeout(() => {
+  //     clearStuckUploads();
+  //   }, 3000); // Wait 3 seconds after mount for data to settle
 
-    return () => clearTimeout(timer);
-  }, [clearStuckUploads]);
+  //   return () => clearTimeout(timer);
+  // }, [clearStuckUploads]);
 
   // Poll upload progress every 1 second, but only when there are active uploads
   useEffect(() => {
