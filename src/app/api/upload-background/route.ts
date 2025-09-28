@@ -159,7 +159,13 @@ async function processUploadInBackground(
       .eq("id", imageId);
 
     // Convert file to buffer for processing
+
+    console.log("File:", file);
+    console.log("Processing file:", file.name);
+
     const fileBuffer = await fileToBuffer(file);
+
+    console.log("File buffer:", fileBuffer);
 
     // Update progress
     await supabase
