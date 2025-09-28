@@ -1,5 +1,8 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { createSignedUrlDiagnostic, logEnvironmentStatus } from "@/lib/env-validation";
+import {
+  createSignedUrlDiagnostic,
+  logEnvironmentStatus,
+} from "@/lib/env-validation";
 
 /**
  * Creates a signed URL with error handling and validation
@@ -12,12 +15,10 @@ export async function createSignedUrlSafe(
 ): Promise<string | null> {
   try {
     // Log environment status in development
-    if (process.env.NODE_ENV === 'development') {
-      logEnvironmentStatus();
-    }
-    
+    logEnvironmentStatus();
+
     const supabase = getSupabaseBrowserClient();
-    
+
     const { data, error } = await supabase.storage
       .from(bucket)
       .createSignedUrl(path, expiresIn);
@@ -27,39 +28,41 @@ export async function createSignedUrlSafe(
         error,
         bucket,
         path,
-        expiresIn
+        expiresIn,
       });
       return null;
     }
 
     const signedUrl = data?.signedUrl;
-    
+
     if (!signedUrl) {
-      console.error(`No signed URL returned from Supabase for ${bucket}/${path}`);
+      console.error(
+        `No signed URL returned from Supabase for ${bucket}/${path}`
+      );
       return null;
     }
 
     // Comprehensive validation
     const diagnostic = createSignedUrlDiagnostic(signedUrl);
-    
+
     if (!diagnostic.isValid) {
       console.error(`Invalid signed URL for ${bucket}/${path}:`, {
         url: signedUrl,
         issues: diagnostic.issues,
         hasToken: diagnostic.hasToken,
-        hostname: diagnostic.hostname
+        hostname: diagnostic.hostname,
       });
       return null;
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`✅ Created valid signed URL for ${bucket}/${path}`);
-    }
-    
-    return signedUrl;
+    console.log(`✅ Created valid signed URL for ${bucket}/${path}`);
 
+    return signedUrl;
   } catch (error) {
-    console.error(`Exception creating signed URL for ${bucket}/${path}:`, error);
+    console.error(
+      `Exception creating signed URL for ${bucket}/${path}:`,
+      error
+    );
     return null;
   }
 }
@@ -78,9 +81,9 @@ export async function createImageSignedUrls(
 }> {
   const [originalUrl, thumbnailUrl] = await Promise.all([
     createSignedUrlSafe("images", storagePath, expiresIn),
-    thumbnailPath 
+    thumbnailPath
       ? createSignedUrlSafe("images", thumbnailPath, expiresIn)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
   ]);
 
   // If thumbnail fails, use original as fallback
@@ -98,7 +101,7 @@ export async function createImageSignedUrls(
 export function validateSignedUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
-    return urlObj.searchParams.has('token');
+    return urlObj.searchParams.has("token");
   } catch {
     return false;
   }
@@ -108,17 +111,15 @@ export function validateSignedUrl(url: string): boolean {
  * Debug function to log signed URL details
  */
 export function debugSignedUrl(url: string, context: string = ""): void {
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      const urlObj = new URL(url);
-      console.log(`[DEBUG] Signed URL ${context}:`, {
-        hasToken: urlObj.searchParams.has('token'),
-        pathname: urlObj.pathname,
-        tokenExists: !!urlObj.searchParams.get('token'),
-        hostname: urlObj.hostname
-      });
-    } catch (error) {
-      console.error(`[DEBUG] Invalid URL ${context}:`, url, error);
-    }
+  try {
+    const urlObj = new URL(url);
+    console.log(`[DEBUG] Signed URL ${context}:`, {
+      hasToken: urlObj.searchParams.has("token"),
+      pathname: urlObj.pathname,
+      tokenExists: !!urlObj.searchParams.get("token"),
+      hostname: urlObj.hostname,
+    });
+  } catch (error) {
+    console.error(`[DEBUG] Invalid URL ${context}:`, url, error);
   }
 }
