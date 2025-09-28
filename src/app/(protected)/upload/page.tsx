@@ -38,7 +38,7 @@ export default function UploadPage({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatuses, setUploadStatuses] = useState<FileUploadStatus[]>([]);
   const [showCompletionSnackbar, setShowCompletionSnackbar] = useState(false);
-
+  console.log("UploadStatuses:", uploadStatuses);
   // Handle upload completion callback
   const handleAllUploadsComplete = React.useCallback(() => {
     console.log("All uploads completed! Showing snackbar and redirecting...");
