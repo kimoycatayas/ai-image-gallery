@@ -145,7 +145,7 @@ export default function UploadPage({
         console.log("Calling startBackgroundUpload...");
         const result = await startBackgroundUpload(dt.files, caption);
         console.log("Background upload completed successfully");
-
+        console.log("Result:", result);
         // Handle upload results and errors
         if (
           result.errors &&
